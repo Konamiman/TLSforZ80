@@ -214,26 +214,22 @@ T1MS7MHZ:	EQU	220
 
 	ld	c,0a0h
 	call	J2CPUTBYTE
-	call	J2CGETACK
 	ret	c
 	inc	(ix)
 
 	ld	c,050H	;Address High Byte
 	call	J2CPUTBYTE
-	call	J2CGETACK
 	ret	c
 	inc	(ix)
 
 	ld	c,000h	;Address Low Byte
 	call	J2CPUTBYTE
-	call	J2CGETACK
 	ret	c
 	inc	(ix)
 
 	call	J2CSTART	;the so called repeate start
 	ld	c,0a1h	; ( I2C address <<1 | 0x01 ) for read operation
 	call	J2CPUTBYTE
-	call	J2CGETACK
 	ret	c
 	inc	(ix)
 
@@ -243,49 +239,42 @@ T1MS7MHZ:	EQU	220
 	call	J2CGETBYTE	; Data n
 	ld	(ix),c
 	or	a
-	call	J2CPUTACK
 	inc	ix
 
 	or	a
 	call	J2CGETBYTE	; Data n+1
 	ld	(ix),c
 	or	a
-	call	J2CPUTACK
 	inc	ix
 
 	or	a
 	call	J2CGETBYTE	; Data n+2
 	ld	(ix),c
 	or	a
-	call	J2CPUTACK
 	inc	ix
 
 	or	a
 	call	J2CGETBYTE	; Data n+3
 	ld	(ix),c
 	or	a
-	call	J2CPUTACK
 	inc	ix
 
 	or	a
 	call	J2CGETBYTE	; Data n+4
 	ld	(ix),c
 	or	a
-	call	J2CPUTACK
 	inc	ix
 
 	or	a
 	call	J2CGETBYTE	; Data n+5
 	ld	(ix),c
 	or	a
-	call	J2CPUTACK
 	inc	ix
 
 	scf
 	call	J2CGETBYTE	; Data n+6 (last)
 	ld	(ix),c
 	scf
-	call	J2CPUTACK
 
 	call	J2CSTOP
 	or	a
@@ -306,6 +295,49 @@ WAIT1:	DEC	HL
 	RET
 
 J2CWAKE:
+	ld	a,%10	;SCL=1, SDA=0
+	call	J2CSETPINS
+
+	call	WAIT1MS
+	call	WAIT1MS
+
+	ld	a,%11	;SCL=1, SDA=10
+	call	J2CSETPINS
+
+	call	WAIT1MS
+	call	WAIT1MS
+
+	ld	a,%10	;SCL=1, SDA=0
+	call	J2CSETPINS
+
+	ret
+
+
+; Directly set the state of the the I2C pins
+; Inputs:  B = reg 15 state  PSG reg 15 selected
+;          A = SDA in bit 0, SCL in bit 1
+J2CSETPINS:
+	BIT	6,B	; ABSEL   ; test for A/B 
+	jr	nz,BSETPINS
+ASETPINS:
+	and	%0011
+	res	0,b
+	res	1,b
+	jr	DOSETPINS
+BSETPINS:
+	rla
+	rla
+	and	%1100
+	res	2,b
+	res	3,b
+DOSETPINS:
+	or	b
+	OUT	(PSGWR),A
+	ld	b,a
+	ret
+
+	if	0
+
 	ld	a,b
 	SET	1,A	; ASCL ; SCL=1
 	OUT	(PSGWR),A
@@ -313,20 +345,22 @@ J2CWAKE:
 	OUT	(PSGWR),A
 
 	;call    WAIT1MS
-	; call    WAIT1MS
+	call	WAIT1MS
 	call	WAIT1MS
 
 	SET	0,A	; ASDA ; SDA=1
 	OUT	(PSGWR),A
 
 	; call    WAIT1MS
-	; call    WAIT1MS
+	call	WAIT1MS
 	call	WAIT1MS
 
 	RES	0,A	; ASDA ; SDA=0
 	OUT	(PSGWR),A
 
 	ret
+
+	endif
 
 
 ;    ___ _  _ ___ _____ 
@@ -486,7 +520,8 @@ BSTART:
 ; Put a byte on I2C bus
 ; Inputs:  B = reg 15 state  PSG reg 15 selected
 ;          C = byte to write 
-; Outputs: B = reg 15 state   
+; Outputs: B = reg 15 state
+;          Cy=0 Acked, Cy=1 Timeout waiting for ack
 ; Modify: AF, BC
 
 J2CPUTBYTE:
@@ -509,55 +544,8 @@ APBY2:
 	RES	1,A	; ASCL ; SCL=0
 	OUT	(PSGWR),A
 	DJNZ	APBYTE
-	;
-	SET	0,A	; ASDA ; SDA=1
-	OUT	(PSGWR),A
-	LD	B,A	; save reg 15 state
-	jp	AGAK	;RET ;!!! Optimization: get the ACK right away
-;
 
-; Put a byte on I2C bus on port B
-BPBYTE:
-	rlc	C
-	RES	2,A	; BSDA
-	JR	NC,BPBY2	; SDA=CY
-	SET	2,A	; BSDA
-BPBY2:
-	OUT	(PSGWR),A
-	SET	3,A	; BSCL ; SCL=1
-	OUT	(PSGWR),A
-	RES	3,A	; BSCL ; SCL=0
-	OUT	(PSGWR),A
-	DJNZ	BPBYTE
-	;
-	SET	2,A	; BSDA ; SDA=1
-	OUT	(PSGWR),A
-
-	LD	B,A	; save reg 15 state
-	jp	BGAK	;RET ;!!! Optimization: get the ACK right away
-	ret
-	;
-
-
-;     ___ ___ _____     _   ___ _  __
-;    / __| __|_   _|   /_\ / __| |/ /
-;   | (_ | _|  | |    / _ \ (__| ' < 
-;    \___|___| |_|   /_/ \_\___|_|\_\
-;                                    
-; Read ACK bit
-; Inputs:  B = reg 15 state  PSG reg 15 selected
-; outputs: Cy=0 Acked, Cy=1 Timeout waiting for ack
-;          B = Reg15 state
-; Modify: AF, B
-J2CGETACK:	; GET ACK
-	ret		;!!!
-
-	LD	A,B
-	BIT	6,A	; ABSEL
-	JR	NZ,BGAK
-;
-
-; Read ACK bit for port A
+	; Read ACK bit for port A
 AGAK:
 	SET	0,A	; ASDA ; SDA=1
 	OUT	(PSGWR),A
@@ -580,9 +568,7 @@ AGAK1:
 	JR	NZ,AGAK1
 	;
 	SCF		; Indicate TIMEOUT
-;
 
-; Read ACK bit for port B
 AGAK2:
 	LD	A,15
 	OUT	(PSGAD),A	; Sel Reg 15
@@ -594,7 +580,21 @@ AGAK2:
 	RET
 ;
 
-; Read ACK bit for port B
+; Put a byte on I2C bus on port B
+BPBYTE:
+	rlc	C
+	RES	2,A	; BSDA
+	JR	NC,BPBY2	; SDA=CY
+	SET	2,A	; BSDA
+BPBY2:
+	OUT	(PSGWR),A
+	SET	3,A	; BSCL ; SCL=1
+	OUT	(PSGWR),A
+	RES	3,A	; BSCL ; SCL=0
+	OUT	(PSGWR),A
+	DJNZ	BPBYTE
+
+	; Read ACK bit for port B
 BGAK:
 	SET	2,A	; BSDA ; SDA=1
 	OUT	(PSGWR),A
@@ -630,7 +630,6 @@ BGAK2:
 	;
 
 
-
 ;     ___ ___ _____   _____   _______ ___ 
 ;    / __| __|_   _| | _ ) \ / /_   _| __|
 ;   | (_ | _|  | |   | _ \\ V /  | | | _| 
@@ -638,14 +637,15 @@ BGAK2:
 ;                                         
 ; Read a byte on I2C bus
 ; Inputs:  B = reg 15 state  PSG reg 15 selected
+;          Cy = 0 to send ACK, 1 to send NAK
 ; outputs: C = byte read,
 ;          B = Reg15 state
-; Modify: AF, BC, E 
+; Modify: AF, BC, DE
 
 
 J2CGETBYTE:
 	push	af
-	pop	de	;ACK to put in E !!!
+	pop	de	;ACK to put in E
 
 	LD	A,B
 	BIT	6,A	; ABSEL
@@ -677,66 +677,10 @@ AGBY1:
 	DJNZ	AGBY1
 	;
 	LD	B,A	; save reg 15 state
-	jp	APAK	;RET ;!!! Optimization: go directly yo put ACK
-	;
-
-
-; Read a byte on I2C bus on port B
-BGBYTE:
-	SET	2,A	; BSDA ; SDA=1
-	OUT	(PSGWR),A
-	LD	BC,0800H	; B=8, C=0
-	;
-BGBY1:
-	SET	3,A	; BSCL ; SCL=1
-	OUT	(PSGWR),A
-	LD	E,A	; Save A (Reg 15 state)
-	LD	A,14
-	OUT	(PSGAD),A	; Selec REG 14
-	IN	A,(PSGRD)
-	AND	10h	; MSDA   ; Mask for bit TRIGGER (SDA)
-	NEG		; CY=(A==0)  
-	RL	C
-	;
-	LD	A,15
-	OUT	(PSGAD),A
-	LD	A,E	; Restore reg 15 state
-	RES	3,A	; BSCL ; SCL=0
-	OUT	(PSGWR),A
-	DJNZ	BGBY1
-	;
-	LD	B,A	; save reg 15 state
-	jp	BPAK	;RET ;!!! Optimization: go directly yo put ACK
-	;
-
-
-
-
-;    ___ _   _ _____     _   ___ _  __
-;   | _ \ | | |_   _|   /_\ / __| |/ /
-;   |  _/ |_| | | |    / _ \ (__| ' < 
-;   |_|  \___/  |_|   /_/ \_\___|_|\_\
-;                                     
-; Put Ack bit on I2C bus
-; B = reg 15 last state,  PSG reg 15 selected
-; 
-
-; Inputs:  B = reg 15 state  PSG reg 15 selected
-;          Cy = Ack State level (0 is ack, 1 is nack)
-; outputs: B = Reg15 state
-; Modify:  AF, B 
-
-J2CPUTACK:	; PUT ACK
-	ret		;!!!
-
-	LD	A,B
-	BIT	6,A	; ABSEL
-	JR	NZ,BPAK
-	;
 
 ; Put Ack bit on I2C bus Port A
 APAK:
-	push	de	;!!! Get ACK from E
+	push	de	;Get ACK from E
 	pop	af
 	ld	a,b
 
@@ -755,10 +699,39 @@ APAK1:
 	OUT	(PSGWR),A
 	LD	B,A	; save reg 15 state
 	RET
-	;
 
-; Put Ack bit on I2C bus Port B
+
+; Read a byte on I2C bus on port B
+BGBYTE:
+	SET	2,A	; BSDA ; SDA=1
+	OUT	(PSGWR),A
+	LD	BC,0800H	; B=8, C=0
+	;
+BGBY1:
+	SET	3,A	; BSCL ; SCL=1
+	OUT	(PSGWR),A
+	LD	D,A	; Save A (Reg 15 state)
+	LD	A,14
+	OUT	(PSGAD),A	; Selec REG 14
+	IN	A,(PSGRD)
+	AND	10h	; MSDA   ; Mask for bit TRIGGER (SDA)
+	NEG		; CY=(A==0)  
+	RL	C
+	;
+	LD	A,15
+	OUT	(PSGAD),A
+	LD	A,D	; Restore reg 15 state
+	RES	3,A	; BSCL ; SCL=0
+	OUT	(PSGWR),A
+	DJNZ	BGBY1
+	;
+	LD	B,A	; save reg 15 state
+
 BPAK:
+	push	de	;Get ACK from E
+	pop	af
+	ld	a,b
+
 	RES	2,A	; BSDA
 	OUT	(PSGWR),A
 	JR	NC,BPAK1	; SDA=CY
