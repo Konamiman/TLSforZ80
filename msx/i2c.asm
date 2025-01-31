@@ -747,4 +747,202 @@ BPAK1:
 	OUT	(PSGWR),A
 	LD	B,A	; save reg 15 state
 	RET
-
+
+
+;--- Send a command to the ATECC608
+;    Input:  A  = Chip address * 2
+;            HL = Address of command (without address, count or checkum)
+;            B  = Length of command (not including address, count or checkum; so minimum is 4)
+;            DE = Address for output
+;    Output: A = 0: Ok
+;                1: No response from chip
+;                2: CRC error on received data
+;    Note that even if A=0 at the end, the chip may have returned an error code in the output.
+
+ATECC_CMD:
+	;--- Init on joystick port A, if that doesn't work, try on port B
+
+	push de
+	pop ix
+	ld (ix),a	;Chip address
+
+	ld c,a
+	push hl
+	push bc
+
+	or a	
+	call J2CINIT
+	call	J2CWAKE
+	call	J2CSTART
+	jr nc,_ATECC_CMD_NEXT
+
+	scf
+	call J2CINIT
+	call	J2CWAKE
+	call	J2CSTART
+	jr nc,_ATECC_CMD_NEXT
+
+	pop bc
+	pop hl
+	ld a,1
+	ret
+
+_ATECC_CMD_NEXT:
+	
+	;--- Calculate CRC
+
+	ld (ix+4),b ;Save PSG status
+	pop bc
+	ld a,c	;Command length
+	add 3   ;Add length of length byte (1) and CRC (2)
+	ld (ix+1),a
+	push bc
+	
+	push ix
+	pop hl
+	call CRC ;Now DE = CRC of length
+
+	pop bc
+	pop hl
+	ld c,b
+	ld b,0
+	push bc
+	push hl
+	call CRC_NEXT	;Now DE = CRC of length and command
+	ld (ix+2),e
+	ld (ix+3),d
+	pop hl
+	pop bc
+
+	;--- Send command
+
+	ld c,(ix)	;Chip address
+	ld b,(ix+4)
+	call J2CPUTBYTE
+	jr c,_ATECC_CMD_ERR_1
+
+	ld c,3	;"Command" address
+	ld b,(ix+4)
+	call J2CPUTBYTE
+	jr c,_ATECC_CMD_ERR_1
+
+	ld c,(ix+1)	;Length byte
+	ld b,(ix+4)
+	call J2CPUTBYTE
+	jr c,_ATECC_CMD_ERR_1
+
+	ld c,(ix+1)
+	or a
+	sbc 3	;Actual command length
+	ld b,a
+
+_ATECC_CMD_LOOP:
+	push bc
+
+	ld c,(hl)
+	ld b,(ix+4)
+	call J2CPUTBYTE
+	jr c,_ATECC_CMD_ERR_1
+
+	inc hl
+	pop bc
+	djnz _ATECC_CMD_LOOP
+
+	ld c,(ix+2)	;Send CRC
+	call J2CPUTBYTE
+	jr c,_ATECC_CMD_ERR_1
+	ld c,(ix+3)
+	call J2CPUTBYTE
+	jr c,_ATECC_CMD_ERR_1
+
+	;--- Wait for the response
+
+	ld c,(ix)
+	set 1,c ;"Read" bit
+	ld b,(ix+4)
+	call J2CPUTBYTE
+	jr c,_ATECC_CMD_ERR_1
+
+	or a
+	ld b,(ix+4)
+	or a
+	call J2CGETBYTE
+
+	;From this point we can't use the output buffer for temporary data anymore
+
+	ld (ix),c	;Output length
+	ld b,c
+	dec b	;Remaining length minus one
+	dec b
+	ld c,(ix+4) ;PSG register value
+
+	inc ix
+
+_ATECC_CMD_LOOP2:
+	push bc
+
+	ld b,c
+	or a
+	call J2CGETBYTE
+	ld (ix),c
+	inc ix
+
+	pop bc
+	djnz _ATECC_CMD_LOOP2
+
+	;Receive last byte NAKing it
+
+	ld b,c
+	scf
+	call J2CGETBYTE
+	ld (ix),c
+
+	;TODO: Verify checksum
+
+	xor a
+	ret
+
+_ATECC_CMD_ERR_1:
+	ld a,1
+	ret
+
+
+;--- Calculate CRC
+;    In:  HL = Address, BC = Length
+;    Out: DE = CRC
+CRC:
+    ld de,0 ;Calculated CRC
+CRC_NEXT:
+loop_byte:
+    push bc
+    ld b,8
+    ld c,(hl)   ;Data byte
+
+loop_bit:
+    xor a
+
+    sla e
+    rl d    ;CRC rotated left, old MSB to carry
+
+    rla     ;A=1 or 0 depending on old MSB of CRC
+    xor c
+    and 1   ;A=1 if bit N of data = old MSB of CRC
+    jr z,NOTXOR
+    
+    ld a,d
+    xor 0x80
+    ld d,a
+    ld a,e
+    xor 0x05
+    ld e,a
+NOTXOR:
+    srl c   ;Rotate right data so bit 1 becomes LSB
+    djnz loop_bit
+
+    inc hl
+    pop bc
+    dec bc
+    ld a,b
+    or c
+    jr nz,loop_byte
+    ret
