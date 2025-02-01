@@ -32,6 +32,15 @@ T1MS7MHZ:	EQU	220
 
 	org	8000h
 
+	ld a,#C0
+	ld hl,ATECC_INFO
+	ld b,ATECC_INFO_END-ATECC_INFO
+	ld de,9000h
+	call ATECC_CMD
+	ret
+ATECC_INFO: db #30,0,0,0
+ATECC_INFO_END:
+
 	ld	ix,9000h
 	ld	(ix),0
 
@@ -753,10 +762,12 @@ BPAK1:
 ;    Input:  A  = Chip address * 2
 ;            HL = Address of command (without address, count or checkum)
 ;            B  = Length of command (not including address, count or checkum; so minimum is 4)
-;            DE = Address for output
+;            DE = Address for output (length, result and CRC)
 ;    Output: A = 0: Ok
 ;                1: No response from chip
-;                2: CRC error on received data
+;                2: Chip NAKed command
+;                3: Timeout waiting for response
+;                4: CRC error on received data
 ;    Note that even if A=0 at the end, the chip may have returned an error code in the output.
 
 ATECC_CMD:
@@ -772,66 +783,61 @@ ATECC_CMD:
 
 	or a	
 	call J2CINIT
+	ld (ix+4),b ;Save PSG status
 	call	J2CWAKE
 	call	J2CSTART
-	jr nc,_ATECC_CMD_NEXT
+	;jr nc,_ATECC_CMD_NEXT
 
-	scf
-	call J2CINIT
-	call	J2CWAKE
-	call	J2CSTART
-	jr nc,_ATECC_CMD_NEXT
+	;scf
+	;call J2CINIT
+	;call	J2CWAKE
+	;call	J2CSTART
+	;jr nc,_ATECC_CMD_NEXT
 
-	pop bc
-	pop hl
-	ld a,1
-	ret
+	;pop bc
+	;pop hl
+	;ld a,1
+	;ret
 
 _ATECC_CMD_NEXT:
 	
 	;--- Calculate CRC
-
-	ld (ix+4),b ;Save PSG status
+	
 	pop bc
-	ld a,c	;Command length
+	ld a,b	;Command length
 	add 3   ;Add length of length byte (1) and CRC (2)
 	ld (ix+1),a
 	push bc
 	
-	push ix
-	pop hl
-	call CRC ;Now DE = CRC of length
+	ld c,a
+	call CRC_BYTE ;Now DE = CRC of length
 
 	pop bc
-	pop hl
-	ld c,b
-	ld b,0
 	push bc
-	push hl
 	call CRC_NEXT	;Now DE = CRC of length and command
 	ld (ix+2),e
 	ld (ix+3),d
-	pop hl
 	pop bc
+	pop hl
 
 	;--- Send command
 
 	ld c,(ix)	;Chip address
 	ld b,(ix+4)
 	call J2CPUTBYTE
-	jr c,_ATECC_CMD_ERR_1
+	jp c,_ATECC_CMD_ERR_2
 
 	ld c,3	;"Command" address
 	ld b,(ix+4)
 	call J2CPUTBYTE
-	jr c,_ATECC_CMD_ERR_1
+	jp c,_ATECC_CMD_ERR_2
 
 	ld c,(ix+1)	;Length byte
 	ld b,(ix+4)
 	call J2CPUTBYTE
-	jr c,_ATECC_CMD_ERR_1
+	jr c,_ATECC_CMD_ERR_2
 
-	ld c,(ix+1)
+	ld a,(ix+1)
 	or a
 	sbc 3	;Actual command length
 	ld b,a
@@ -842,33 +848,38 @@ _ATECC_CMD_LOOP:
 	ld c,(hl)
 	ld b,(ix+4)
 	call J2CPUTBYTE
-	jr c,_ATECC_CMD_ERR_1
+	pop bc
+	jr c,_ATECC_CMD_ERR_2
 
 	inc hl
-	pop bc
 	djnz _ATECC_CMD_LOOP
 
 	ld c,(ix+2)	;Send CRC
 	call J2CPUTBYTE
-	jr c,_ATECC_CMD_ERR_1
+	jr c,_ATECC_CMD_ERR_2
 	ld c,(ix+3)
 	call J2CPUTBYTE
-	jr c,_ATECC_CMD_ERR_1
+	jr c,_ATECC_CMD_ERR_2
+
+	call J2CSTOP
 
 	;--- Wait for the response
 
+	call J2CSTART
+
 	ld c,(ix)
-	set 1,c ;"Read" bit
+	set 0,c ;"Read" bit
 	ld b,(ix+4)
 	call J2CPUTBYTE
-	jr c,_ATECC_CMD_ERR_1
+	jr c,_ATECC_CMD_ERR_3
 
-	or a
 	ld b,(ix+4)
 	or a
 	call J2CGETBYTE
 
 	;From this point we can't use the output buffer for temporary data anymore
+
+	push ix	;Save start of output for calculating CRC later
 
 	ld (ix),c	;Output length
 	ld b,c
@@ -897,26 +908,64 @@ _ATECC_CMD_LOOP2:
 	call J2CGETBYTE
 	ld (ix),c
 
-	;TODO: Verify checksum
+	call J2CSTOP
+
+	;--- Check CRC of response
+
+	pop hl ;Start of output
+	ld b,(hl) ;Byte count
+	dec b
+	dec b ;Exclude CRC field from count
+
+	call CRC
+
+	ld a,d
+	cp (ix)
+	ld a,4
+	ret nz
+	ld a,e
+	cp (ix-1)
+	ld a,4
+	ret nz
+
+	;--- CRC ok, we're all set!
 
 	xor a
 	ret
 
-_ATECC_CMD_ERR_1:
-	ld a,1
+_ATECC_CMD_ERR_2:
+	ld a,2
+	ret
+
+_ATECC_CMD_ERR_3:
+	ld a,3
 	ret
 
 
 ;--- Calculate CRC
-;    In:  HL = Address, BC = Length
+;    In:  HL = Address, B = Length
 ;    Out: DE = CRC
 CRC:
     ld de,0 ;Calculated CRC
 CRC_NEXT:
 loop_byte:
     push bc
-    ld b,8
     ld c,(hl)   ;Data byte
+
+	call CRC_BYTE_NEXT
+
+    inc hl
+    pop bc
+    djnz loop_byte
+    ret
+
+
+	;In:  C = Byte, DE=0
+	;Out: DE = CRC
+CRC_BYTE:
+	ld de,0
+CRC_BYTE_NEXT:
+	ld b,8
 
 loop_bit:
     xor a
@@ -930,19 +979,13 @@ loop_bit:
     jr z,NOTXOR
     
     ld a,d
-    xor 0x80
+    xor #80
     ld d,a
     ld a,e
-    xor 0x05
+    xor #05
     ld e,a
 NOTXOR:
     srl c   ;Rotate right data so bit 1 becomes LSB
     djnz loop_bit
+	ret
 
-    inc hl
-    pop bc
-    dec bc
-    ld a,b
-    or c
-    jr nz,loop_byte
-    ret
