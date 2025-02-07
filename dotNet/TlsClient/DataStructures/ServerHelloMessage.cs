@@ -115,7 +115,7 @@ namespace Konamiman.TlsForZ80.TlsClient.DataStructures
                         dataLength -= 4;
                         VerifyDataLength(dataLength, keyLength);
 
-                        if(groupId is SupportedGroup.SECP_256_R1 or SupportedGroup.X25519) {
+                        if(groupId is SupportedGroup.SECP_256_R1) {
                             PublicKey = data.Skip(index).Take(keyLength).ToArray();
                         }
 

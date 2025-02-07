@@ -13,7 +13,12 @@
 
   <ItemGroup>
     <Reference Include="Assembler">
-      <HintPath>..\..\..\Nestor80\Assembler\bin\Debug\net6.0\Assembler.dll</HintPath>
+      <HintPath>..\Assembler.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Linker">
+      <HintPath>..\Linker.dll</HintPath>
+      <Private>True</Private>
     </Reference>
   </ItemGroup>
 

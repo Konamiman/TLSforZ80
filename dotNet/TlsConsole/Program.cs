@@ -12,14 +12,28 @@ class Program
 
     public static void Main(string[] args)
     {
+        bool httpGet = false;
+
         if(args.Length == 0) {
             WriteLine("TCP based TLS 1.3 console");
-            WriteLine("Usage: TLSCON <host> [<port>]");
+            WriteLine("Usage: TLSCON <host>[:<port>] [-hg|--http-get");
             return;
         }
 
-        var host = args[0];
-        int port = args.Length > 1 ? int.Parse(args[1]) : 443;
+        var hostParts = args[0].Split(':');
+        var host = hostParts[0];
+        int port = hostParts.Length > 1 ? int.Parse(hostParts[1]) : 443;
+
+        if(args.Length > 1) {
+            var arg1 = args[1].ToLower();
+            if(arg1 is "-hg" or "--http-get") {
+                httpGet = true;
+            }
+            else {
+                WriteLine("*** Invalid arguments");
+                return;
+            }
+        }
 
         keepRunning = true;
         Console.CancelKeyPress += Console_CancelKeyPress;
@@ -37,6 +51,10 @@ class Program
         var connection = new TlsClientConnection(tcpTransport, null, host);
 
         while(connection.State < ConnectionState.Established) ;
+
+        if(httpGet) {
+            connection.SendApplicationData(Encoding.ASCII.GetBytes($"GET / HTTP/1.1\r\nHost: {host}\r\n"));
+        }
         WriteLine("--- Connected! Typed lines will be sent when pressing ENTER");
 
         while(keepRunning) {

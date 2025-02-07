@@ -229,7 +229,7 @@ public class TlsClientConnection
     int receivedRecordReceivedLength = 0;
     int receivedRecordLength = 0;
     string hostName;
-    byte[] localX25519privateKey;
+    byte[] localPrivateKeyBytes;
     ECDiffieHellman localP256Key;
     byte[] sharedSecret;
     HashAlgorithm hashAlgorithm;
@@ -548,24 +548,20 @@ public class TlsClientConnection
         if(state is ConnectionState.Initial) {
             State = ConnectionState.Handshake;
 
-            if(localX25519privateKey is null) {
-                localX25519privateKey = new byte[32];
-                RandomNumberGenerator.Create().GetBytes(localX25519privateKey);
-            }
-            if(localP256Key is null) {
-                localP256Key = ECDiffieHellman.Create(new ECParameters {
-                    Curve = ECCurve.NamedCurves.nistP256,
-                    D = localX25519privateKey
-                });
+            if(localPrivateKeyBytes is null) {
+                localPrivateKeyBytes = new byte[32];
+                RandomNumberGenerator.Create().GetBytes(localPrivateKeyBytes);
             }
 
-            var x25519publicKey = new byte[32];
-            Curve25519.KeyGenInline(x25519publicKey, null, localX25519privateKey);
+            localP256Key ??= ECDiffieHellman.Create(new ECParameters {
+                    Curve = ECCurve.NamedCurves.nistP256,
+                    D = localPrivateKeyBytes
+                });
+
 
             var clientHello = new ClientHelloMessage() {
-                CipherSuites = [CipherSuite.TLS_AES_128_GCM_SHA256, CipherSuite.TLS_AES_256_GCM_SHA384],
+                CipherSuites = [ CipherSuite.TLS_AES_128_GCM_SHA256 ],
                 P256PublicKey = localP256Key.ExportSubjectPublicKeyInfo().Skip(27).ToArray(),
-                X25519PublicKey = x25519publicKey,
                 ServerName = hostName
             };
             var clientHelloBytes = clientHello.ToByteArray();
@@ -609,34 +605,29 @@ public class TlsClientConnection
                 throw new ProtocolError(AlertCode.protocolVersion, $"The server doesn't support TLS 1.3");
             }
 
-            if(serverHello.CipherSuite is not CipherSuite.TLS_AES_128_GCM_SHA256 and not CipherSuite.TLS_AES_256_GCM_SHA384) {
+            if(serverHello.CipherSuite is not CipherSuite.TLS_AES_128_GCM_SHA256) {
                 throw new ProtocolError(AlertCode.illegalParameter, $"The server returned {serverHello.CipherSuite} as the cipher suite in ServerHello");
             }
 
-            hashAlgorithm = serverHello.CipherSuite is CipherSuite.TLS_AES_128_GCM_SHA256 ? SHA256.Create() : SHA384.Create();
-            hmacAlgorithm = serverHello.CipherSuite is CipherSuite.TLS_AES_128_GCM_SHA256 ? new HMACSHA256() : new HMACSHA384();
+            hashAlgorithm = SHA256.Create();
+            hmacAlgorithm = new HMACSHA256();
             keys = new TrafficKeys(
                 hmacAlgorithm,
                 hashAlgorithm,
-                keyLength: serverHello.CipherSuite is CipherSuite.TLS_AES_128_GCM_SHA256 ? 16 : 32,
+                keyLength: 16,
                 ivLength: 12);
 
             byte[] sharedSecret;
-            if(serverHello.PublicKey.Length == 32) { //P256 key is 64 bytes, X25519 key is 32 bytes
-                sharedSecret = Curve25519.GetSharedSecret(localX25519privateKey, serverHello.PublicKey);
-            }
-            else {
-                var remoteEcdhKey = ECDiffieHellman.Create(new ECParameters {
-                    Curve = ECCurve.NamedCurves.nistP256,
-                    Q = new ECPoint {
-                        X = serverHello.PublicKey.Skip(1).Take(32).ToArray(),
-                        Y = serverHello.PublicKey.Skip(33).ToArray(),
-                    }
-                });
-                sharedSecret = localP256Key.DeriveRawSecretAgreement(remoteEcdhKey.PublicKey);
-            }
+            var remoteEcdhKey = ECDiffieHellman.Create(new ECParameters {
+                Curve = ECCurve.NamedCurves.nistP256,
+                Q = new ECPoint {
+                    X = serverHello.PublicKey.Skip(1).Take(32).ToArray(),
+                    Y = serverHello.PublicKey.Skip(33).ToArray(),
+                }
+            });
+            sharedSecret = localP256Key.DeriveRawSecretAgreement(remoteEcdhKey.PublicKey);
 
-            keys.ComputeHandshakeKeys(sharedSecret, hashAlgorithm.ComputeHash(transmittedHandshakeBytes.ToArray()));
+            keys.ComputeHandshakeKeys(sharedSecret, Z80Runner.CalculateSHA256(transmittedHandshakeBytes.ToArray()));
             encryption = new RecordEncryption(keys, tagSize: 16);
             dataReceiver.Encryption = encryption;
         }
@@ -708,45 +699,7 @@ public class TlsClientConnection
         }
 
         else if(receivedHandshakeType is HandshakeType.CertificateVerify) {
-            if(keys is null) {
-                throw new ProtocolError(AlertCode.unexpectedMessage, $"CertificateVerify message received before ServerHello");
-            }
-
-            if(ServerCertificates is null) {
-                throw new ProtocolError(AlertCode.unexpectedMessage, $"CertificateVerify message received before Certificate");
-            }
-
-            var algorithm = (SignatureAlgorithm)receivedRecord.ExtractBigEndianUint16(0);
-            if(!Enum.IsDefined<SignatureAlgorithm>(algorithm)) {
-                throw new ProtocolError(AlertCode.illegalParameter, $"The server returned the invalid value {algorithm} for the signature algorithm in the CertificateVerify message");
-            }
-
-            var signatureLength = receivedRecord.ExtractBigEndianUint16(2);
-            var signature = receivedRecord.Skip(4).Take(signatureLength).ToArray();
-
-            var transmittedBytes = transmittedHandshakeBytes.Take(transmittedHandshakeBytes.Count - dataReceiver.HandshakeHeader.Length - receivedRecordLength);
-            var handshakeHash = hashAlgorithm.ComputeHash(transmittedBytes.ToArray());
-            byte[] contentToSign = [
-                .. Enumerable.Repeat<byte>(0x20, 64),
-                .. Encoding.ASCII.GetBytes("TLS 1.3, server CertificateVerify"),
-                0,
-                .. handshakeHash
-            ];
-
-            var isEcdsa = algorithm is SignatureAlgorithm.ecdsa_secp256r1_sha256 or SignatureAlgorithm.ecdsa_secp384r1_sha384;
-            var is256 = algorithm is SignatureAlgorithm.ecdsa_secp256r1_sha256 or SignatureAlgorithm.rsa_pss_rsae_sha256 or SignatureAlgorithm.rsa_pkcs1_sha256;
-            var ispss = algorithm is SignatureAlgorithm.rsa_pss_rsae_sha256 or SignatureAlgorithm.rsa_pss_rsae_sha384;
-            var hashAlgName = is256 ? HashAlgorithmName.SHA256 : HashAlgorithmName.SHA384;
-
-            CertificateIsValid = isEcdsa ?
-                ServerCertificates[0].GetECDsaPublicKey()?.VerifyData(contentToSign, signature, hashAlgName, DSASignatureFormat.Rfc3279DerSequence) ?? false :
-                ServerCertificates[0].GetRSAPublicKey()?.VerifyData(contentToSign, signature, hashAlgName, ispss ? RSASignaturePadding.Pss : RSASignaturePadding.Pkcs1) ?? false;
-
-            if(!CertificateIsValid && AbortIfInvalidCertificate) {
-                throw new ProtocolError(AlertCode.badCertificate, "The signature verification of the server certificate failed");
-            }
-
-            //TODO: Perform other verifications on the certificate (e.g. is it expired?)
+            // :shrug:
         }
         else if(receivedHandshakeType is HandshakeType.EncryptedExtensions) {
             if(keys is null) {

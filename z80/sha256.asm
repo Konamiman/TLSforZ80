@@ -1,3 +1,9 @@
+    public SHA256.INIT
+    public SHA256.CONTINUE
+    public SHA256.FINALIZE
+    public SHA256.SINGLESTEP
+    public SHA256.RUN
+
     module SHA256
 
 ;--- SHA256 hashing engine for Z80
@@ -24,47 +30,47 @@
 ;       A  = 2
 ;       DE = Address for the generated 32-byte hash
 
-SHA_SINGLESTEP:
+RUN:
     or	a
-    jr	z,SHA_INIT
+    jr	z,INIT
 
     dec	a
-    jp	z,SHA_CONTINUE
+    jp	z,CONTINUE
 
     dec	a
-    jr	z,SHA_FINALIZE
+    jr	z,FINALIZE
 
 
     ;--- Single step hashing
 
-SHA_ONESTEP:
+SINGLESTEP:
     push de
     push hl
     push bc
-    call SHA_INIT
+    call INIT
     pop bc
     pop hl
-    call SHA_CONTINUE
+    call CONTINUE
     pop de
-    jp SHA_FINALIZE
+    jp FINALIZE
 
 
     ;--- Hashing initialization
 
-SHA_INIT:
-    ld hl,SHA_INITIAL_H
-    ld de,SHA_H0
-    ld bc,SHA_INITIAL_H_END-SHA_INITIAL_H
+INIT:
+    ld hl,INITIAL_H
+    ld de,H0
+    ld bc,INITIAL_H_END-INITIAL_H
     ldir
 
-    ld hl,SHA_STATE_START
-    ld de,SHA_STATE_START+1
-    ld bc,SHA_STATE_END-SHA_STATE_START-1
+    ld hl,STATE_START
+    ld de,STATE_START+1
+    ld bc,STATE_END-STATE_START-1
     ld (hl),0
     ldir
 
-    ld hl,SHA_BUFFER
-    ld (SHA_BUFFER_PNT),hl
+    ld hl,BUFFER
+    ld (BUFFER_PNT),hl
 
     ret
 
@@ -72,43 +78,43 @@ SHA_INIT:
     ;--- Hashing finalization,
     ;    copies the computed hash to DE
 
-SHA_FINALIZE:
+FINALIZE:
     push	de  ;Destination address for the generated 32-byte hash
 
     ;* Calculate how much padding must be added
 
-    ld	a,(SHA_TOTAL_LEN)
+    ld	a,(TOTAL_LEN)
     and	3Fh
     sub	56
     neg
     and	3Fh	
     or	a
-    jr	nz,SHA_FINALIZE_OKPAD
+    jr	nz,FINALIZE_OKPAD
     ld	a,64
-SHA_FINALIZE_OKPAD:
+FINALIZE_OKPAD:
 	;Here A = number of padding bytes to add
 
     ;* Hash any remaining buffered data and the padding (not including the length)
 
     ld	c,a
     ld	b,0
-    ld	hl,SHA_ZERO_PAD
-    call	SHA_CONTINUE_2
+    ld	hl,ZERO_PAD
+    call	CONTINUE_2
 
     ;* Convert total length in bytes to length in bits
 
-    ld ix,SHA_TOTAL_LEN
+    ld ix,TOTAL_LEN
     ld	b,3
-SHA_FINALIZE_LENBITS:
+FINALIZE_LENBITS:
     sla	(ix)
     rl	(ix+1)
     rl	(ix+2)
     rl	(ix+3)
-    djnz	SHA_FINALIZE_LENBITS
+    djnz	FINALIZE_LENBITS
 
     ;* Convert total length to big endian
 
-    ld ix,SHA_TOTAL_LEN
+    ld ix,TOTAL_LEN
     ld	d,(ix)
     ld	e,(ix+1)
     ld	(ix+7),d
@@ -124,13 +130,13 @@ SHA_FINALIZE_LENBITS:
 
     ;* Hash any remaining buffered data and the length
 
-    ld hl,SHA_TOTAL_LEN
+    ld hl,TOTAL_LEN
     ld	bc,8
-    call SHA_CONTINUE_2
+    call CONTINUE_2
 
     ;* Copy the final hash to its destination (H0 - H7)
 
-    ld hl,SHA_H0
+    ld hl,H0
     pop de
     ld bc,8*4
     ldir
@@ -141,48 +147,48 @@ SHA_FINALIZE_LENBITS:
     ;--- Continue hashing, buffers or processes a block of data.
     ;    Input: HL = Address of data block, BC = Block length
 
-SHA_CONTINUE:
+CONTINUE:
     ;* Update total length (increase by BC)
 
 	push	hl
-    ld hl,(SHA_TOTAL_LEN)
+    ld hl,(TOTAL_LEN)
 	add	hl,bc
-    ld (SHA_TOTAL_LEN),hl
-    ld hl,(SHA_TOTAL_LEN+2)
+    ld (TOTAL_LEN),hl
+    ld hl,(TOTAL_LEN+2)
 	ld	de,0
 	adc	hl,de
-    ld (SHA_TOTAL_LEN+2),hl
+    ld (TOTAL_LEN+2),hl
     pop	hl
 
-SHA_CONTINUE_2:
-	ld	(SHA_DATA_PNT),hl
-	ld	(SHA_DATA_LEN),bc
+CONTINUE_2:
+	ld	(DATA_PNT),hl
+	ld	(DATA_LEN),bc
 
 	;* If buffered block length plus current block length
 	;  is less than one full block (64 bytes), we don't have enough
     ;  bytes to proces, then simply copy the current block to the temporary block buffer
 
-SHA_CONTINUE_LOOP:
-	ld	bc,(SHA_DATA_LEN)
+CONTINUE_LOOP:
+	ld	bc,(DATA_LEN)
 
 	ld	a,b	;No more data left?
 	or	c
 	ret	z
 
-	ld	hl,(SHA_BUFFER_LEN)
+	ld	hl,(BUFFER_LEN)
 	add	hl,bc   ;HL = Length of total available data (buffered + current)
     ld a,h
     or a
-    jr nz,SHA_CONTINUE_LOOP_2
+    jr nz,CONTINUE_LOOP_2
     ld a,l
     cp 64
-	jr	nc,SHA_CONTINUE_LOOP_2
+	jr	nc,CONTINUE_LOOP_2
 
-	ld	(SHA_BUFFER_LEN),a
-	ld	hl,(SHA_DATA_PNT)
-    ld de,(SHA_BUFFER_PNT)
+	ld	(BUFFER_LEN),a
+	ld	hl,(DATA_PNT)
+    ld de,(BUFFER_PNT)
 	ldir
-    ld (SHA_BUFFER_PNT),de
+    ld (BUFFER_PNT),de
     ret
 
     ;* We have enough data to process.
@@ -191,75 +197,75 @@ SHA_CONTINUE_LOOP:
     ;  and process it; otherwise jump straight
     ;  to processing the current data.
 
-SHA_CONTINUE_LOOP_2:
-    ld a,(SHA_BUFFER_LEN)
+CONTINUE_LOOP_2:
+    ld a,(BUFFER_LEN)
     or a
-    jr z,SHA_PROCESS_DATA_BLOCK
+    jr z,PROCESS_DATA_BLOCK
 
     ld	hl,64
-	ld	de,(SHA_BUFFER_LEN)
+	ld	de,(BUFFER_LEN)
 	or	a
 	sbc	hl,de	
 	push	hl
 	pop	bc	;Now BC = Space remaining in block buffer
 
-    ld	hl,(SHA_DATA_PNT)
-	ld	de,(SHA_BUFFER_PNT)
+    ld	hl,(DATA_PNT)
+	ld	de,(BUFFER_PNT)
     push bc
 	ldir
     pop bc
-	ld	(SHA_DATA_PNT),hl
-    ld hl,(SHA_DATA_LEN)
+	ld	(DATA_PNT),hl
+    ld hl,(DATA_LEN)
     or a
     sbc hl,bc
-    ld (SHA_DATA_LEN),hl
+    ld (DATA_LEN),hl
 
-    ld hl,SHA_BUFFER
-    call SHA_PROCESS_BLOCK
+    ld hl,BUFFER
+    call PROCESS_BLOCK
 
     xor a
-    ld	(SHA_BUFFER_LEN),a
-    ld hl,SHA_BUFFER
-    ld (SHA_BUFFER_PNT),hl
-    jr SHA_CONTINUE_LOOP
+    ld	(BUFFER_LEN),a
+    ld hl,BUFFER
+    ld (BUFFER_PNT),hl
+    jr CONTINUE_LOOP
 
-SHA_PROCESS_DATA_BLOCK:
-    ld hl,(SHA_DATA_PNT)
+PROCESS_DATA_BLOCK:
+    ld hl,(DATA_PNT)
     push hl
-    call SHA_PROCESS_BLOCK
+    call PROCESS_BLOCK
     pop hl
     ld bc,64
     or a
     add hl,bc
-    ld (SHA_DATA_PNT),hl
-    ld hl,(SHA_DATA_LEN)
+    ld (DATA_PNT),hl
+    ld hl,(DATA_LEN)
     or a
     sbc hl,bc
-    ld (SHA_DATA_LEN),hl
-    jr SHA_CONTINUE_LOOP
+    ld (DATA_LEN),hl
+    jr CONTINUE_LOOP
 
 
     ;--- Process the 64 byte block pointed by HL
 
-SHA_PROCESS_BLOCK:
+PROCESS_BLOCK:
 
     ; * For t = 0 to 15 - Wt = M(i)t
 
-    ld de,SHA_W
+    ld de,W
     ld bc,16*4
     ldir
 
-_SHA_PROCESS_BLOCK_AFTER_INIT_W0_15:
+_PROCESS_BLOCK_AFTER_INIT_W0_15:
 
     ; * For t = 16 to 63
     ;     Wt = SSIG1(W(t-2)) + W(t-7) + SSIG0(w(t-15)) + W(t-16)
     ;     SSIG0(x) = ROTR^7(x) XOR ROTR^18(x) XOR SHR^3(x)
     ;     SSIG1(x) = ROTR^17(x) XOR ROTR^19(x) XOR SHR^10(x)
 
-    ld ix,SHA_W+16*4
-    ld iy,SHA_T1
+    ld ix,W+16*4
+    ld iy,T1
     ld b,64-16
-SHA_PROCESS_INITW_LOOP:
+PROCESS_INITW_LOOP:
 
     ;>>> Calculate SSIG0(w(t-15))
 
@@ -270,7 +276,7 @@ SHA_PROCESS_INITW_LOOP:
     ld d,(ix-15*4+2)
     ld e,(ix-15*4+3)
    
-_SHA_PROCESS_BLOCK_BEFORE_ROTR7:
+_PROCESS_BLOCK_BEFORE_ROTR7:
 
     ; T1 = ROTR^7(HLDE) = ROTL^1(HLDE), save as EHLD:
     ; .......0 .......1 .......2 .......3    HLDE
@@ -295,7 +301,7 @@ _SHA_PROCESS_BLOCK_BEFORE_ROTR7:
     pop de
     pop hl
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR7:
+_PROCESS_BLOCK_AFTER_ROTR7:
 
     ; T2 = ROTR^18(HLDE) = ROTR^2(HLDE), save as DEHL:
     ; .......0 .......1 .......2 .......3    HLDE
@@ -323,7 +329,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR7:
     ld (iy+4+2),h
     ld (iy+4+3),l
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR18:
+_PROCESS_BLOCK_AFTER_ROTR18:
 
     pop de
     pop hl
@@ -343,7 +349,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR18:
 	rr	d
 	rr	e
 
-_SHA_PROCESS_BLOCK_AFTER_SHR3:
+_PROCESS_BLOCK_AFTER_SHR3:
 
     ; HLDE = HLDE XOR T1 XOR T2
 
@@ -371,7 +377,7 @@ _SHA_PROCESS_BLOCK_AFTER_SHR3:
     ld (ix+2),d
     ld (ix+3),e
 
-_SHA_PROCESS_BLOCK_AFTER_SSIG0:
+_PROCESS_BLOCK_AFTER_SSIG0:
 
     ;>>> Calculate SSIG1(w(t-2))
 
@@ -382,7 +388,7 @@ _SHA_PROCESS_BLOCK_AFTER_SSIG0:
     ld d,(ix-2*4+2)
     ld e,(ix-2*4+3)
 
-_SHA_PROCESS_BLOCK_BEFORE_ROTR17:
+_PROCESS_BLOCK_BEFORE_ROTR17:
 
     ; T1 = ROTR^17(HLDE) = ROTR^1(HLDE), save as DEHL:
     ; .......0 .......1 .......2 .......3    HLDE
@@ -407,7 +413,7 @@ _SHA_PROCESS_BLOCK_BEFORE_ROTR17:
     pop de
     pop hl
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR17:
+_PROCESS_BLOCK_AFTER_ROTR17:
 
     ; T2 = ROTR^19(HLDE) = ROTR^3(HLDE), save as DEHL:
     ; .......0 .......1 .......2 .......3    HLDE
@@ -444,7 +450,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR17:
     pop de
     pop hl
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR19:
+_PROCESS_BLOCK_AFTER_ROTR19:
 
     ; HLDE = SHR^10(HLDE) = SHR^2(HLDE), save as 0HLD:
     ; 4......0 .......1 .......2 .......3    HLDE
@@ -465,7 +471,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR19:
     ld l,h
     ld h,0
 
-_SHA_PROCESS_BLOCK_AFTER_SHR10:
+_PROCESS_BLOCK_AFTER_SHR10:
 
     ; HLDE = HLDE XOR T1 XOR T2
 
@@ -486,7 +492,7 @@ _SHA_PROCESS_BLOCK_AFTER_SHR10:
     xor (iy+4+3)
     ld e,a
 
-_SHA_PROCESS_BLOCK_AFTER_SSIG1:
+_PROCESS_BLOCK_AFTER_SSIG1:
 
     ; Wt = Wt + HLDE, which is the result of SSIG1(w(t-2))
 
@@ -546,7 +552,7 @@ _SHA_PROCESS_BLOCK_AFTER_SSIG1:
     ld (ix),h
     ld (ix+1),l
 
-_SHA_PROCESS_BLOCK_AFTER_W:
+_PROCESS_BLOCK_AFTER_W:
 
     ;>>> Current Wt done, go to the next one
 
@@ -556,16 +562,16 @@ _SHA_PROCESS_BLOCK_AFTER_W:
     inc ix
 
     dec b
-    jp nz,SHA_PROCESS_INITW_LOOP
+    jp nz,PROCESS_INITW_LOOP
 
     ;* a-h = H0-H7
 
-    ld hl,SHA_H0
-    ld de,SHA_A
+    ld hl,H0
+    ld de,:SHA256.A
     ld bc,8*4
     ldir
 
-_SHA_PROCESS_BLOCK_AFTER_INIT_A_H:
+_PROCESS_BLOCK_AFTER_INIT_A_H:
 
     ; * For t = 0 to 63
     ;     T1 = h + BSIG1(e) + CH(e,f,g) + Kt + Wt
@@ -573,22 +579,22 @@ _SHA_PROCESS_BLOCK_AFTER_INIT_A_H:
     ;     CH( x, y, z) = (x AND y) XOR ( (NOT x) AND z)
 
     ld b,64
-    ld ix,SHA_W
-    ld iy,SHA_K
+    ld ix,W
+    ld iy,K
 
-SHA_PROCESS_HASH_COMP_LOOP:
+PROCESS_HASH_COMP_LOOP:
     push iy
-    ld iy,SHA_T1
+    ld iy,T1
 
     ;>>> Calculate T1 = BSIG1(e)
 
     ; HLDE = e
 
-    ld hl,(SHA_E)
+    ld hl,(E)
     ld a,h
     ld h,l
     ld l,a
-    ld de,(SHA_E+2)
+    ld de,(E+2)
     ld a,e
     ld e,d
     ld d,a
@@ -622,7 +628,7 @@ SHA_PROCESS_HASH_COMP_LOOP:
     pop de
     pop hl
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR6:
+_PROCESS_BLOCK_AFTER_ROTR6:
 
     ; T2 = ROTR^11(HLDE) = ROTR^3(HLDE), save as EHLD:
     ; .......0 .......1 .......2 .......3    HLDE
@@ -659,7 +665,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR6:
     pop de
     pop hl
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR11:
+_PROCESS_BLOCK_AFTER_ROTR11:
 
     ; HLDE = ROTR^25(HLDE) = ROTR^1(HLDE), save as LDEH:
     ; .......0 .......1 .......2 .......3    HLDE
@@ -679,7 +685,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR11:
     ld e,h
     ld h,a
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR25:
+_PROCESS_BLOCK_AFTER_ROTR25:
 
     ; HLDE = HLDE XOR T1 XOR T2 = BSIG1(e)
 
@@ -700,7 +706,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR25:
     xor (iy+4+3)
     ld e,a
 
-_SHA_PROCESS_BLOCK_AFTER_BSIG1:
+_PROCESS_BLOCK_AFTER_BSIG1:
 
     ;>>> Add Kt, Wt and h to T1
 
@@ -719,7 +725,7 @@ _SHA_PROCESS_BLOCK_AFTER_BSIG1:
 
     pop de
 
-_SHA_PROCESS_BLOCK_AFTER_PLUS_WT:
+_PROCESS_BLOCK_AFTER_PLUS_WT:
 
     ; HLDE = HLDE + Kt
 
@@ -738,20 +744,20 @@ _SHA_PROCESS_BLOCK_AFTER_PLUS_WT:
 
     pop de
 
-_SHA_PROCESS_BLOCK_AFTER_PLUS_KT:
+_PROCESS_BLOCK_AFTER_PLUS_KT:
 
     ; HLDE = HLDE + h
 
     push hl
 
-    ld hl,(SHA_H+2)
+    ld hl,(H+2)
     ld a,h
     ld h,l
     ld l,a
     add hl,de
     ex (sp),hl
 
-    ld de,(SHA_H)
+    ld de,(H)
     ld a,d
     ld d,e
     ld e,a
@@ -759,27 +765,27 @@ _SHA_PROCESS_BLOCK_AFTER_PLUS_KT:
 
     pop de
 
-_SHA_PROCESS_BLOCK_AFTER_PLUS_H:
+_PROCESS_BLOCK_AFTER_PLUS_H:
 
     ; T1 = HLDE = BSIG1(e) + Wt + Kt
 
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_T1),hl
+    ld (T1),hl
     ld a,d
     ld d,e
     ld e,a
-    ld (SHA_T1+2),de
+    ld (T1+2),de
 
-_SHA_PROCESS_BLOCK_AFTER_SET_T1:
+_PROCESS_BLOCK_AFTER_SET_T1:
 
     ;>>> Calculate CH(e, f, g) = (e AND f) XOR ((NOT e) AND g)
 
     ; (SP) = high((NOT e) AND g)
 
-    ld hl,(SHA_E)
-    ld de,(SHA_G)
+    ld hl,(E)
+    ld de,(G)
     ld a,h
     cpl
     and d
@@ -793,8 +799,8 @@ _SHA_PROCESS_BLOCK_AFTER_SET_T1:
 
     ; HL = high(e and f)
 
-    ld hl,(SHA_E)
-    ld de,(SHA_F)
+    ld hl,(E)
+    ld de,(F)
     ld a,h
     and d
     ld c,a  ;Change to big endian while we're at it
@@ -816,8 +822,8 @@ _SHA_PROCESS_BLOCK_AFTER_SET_T1:
 
     ; (SP) = low((NOT e) AND g)
 
-    ld hl,(SHA_E+2)
-    ld de,(SHA_G+2)
+    ld hl,(E+2)
+    ld de,(G+2)
     ld a,h
     cpl
     and d
@@ -831,8 +837,8 @@ _SHA_PROCESS_BLOCK_AFTER_SET_T1:
 
     ; HL = low(e and f)
 
-    ld hl,(SHA_E+2)
-    ld de,(SHA_F+2)
+    ld hl,(E+2)
+    ld de,(F+2)
     ld a,h
     and d
     ld c,a  ;Change to big endian while we're at it
@@ -854,13 +860,13 @@ _SHA_PROCESS_BLOCK_AFTER_SET_T1:
     ex de,hl
     pop hl  ;Now HLDE = CH(e, f, g)
 
-_SHA_PROCESS_BLOCK_AFTER_CH:
+_PROCESS_BLOCK_AFTER_CH:
 
     ;>>> T1 = T1 + HLDE = BSIG1(e) + Wt + Kt + CH(e,f,g) + h
 
     push hl
 
-    ld hl,(SHA_T1+2)
+    ld hl,(T1+2)
     ld a,h
     ld h,l
     ld l,a
@@ -868,11 +874,11 @@ _SHA_PROCESS_BLOCK_AFTER_CH:
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_T1+2),hl
+    ld (T1+2),hl
 
     pop hl
 
-    ld de,(SHA_T1)
+    ld de,(T1)
     ld a,d
     ld d,e
     ld e,a
@@ -880,22 +886,22 @@ _SHA_PROCESS_BLOCK_AFTER_CH:
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_T1),hl
+    ld (T1),hl
 
-_SHA_PROCESS_BLOCK_AFTER_T1_COMPLETED:
+_PROCESS_BLOCK_AFTER_T1_COMPLETED:
 
     push iy
-    ld iy,SHA_T1
+    ld iy,T1
 
     ;>>> Calculate T2 = BSIG0(a)
 
     ; HLDE = a
 
-    ld hl,(SHA_A)
+    ld hl,(A)
     ld a,h
     ld h,l
     ld l,a
-    ld de,(SHA_A+2)
+    ld de,(A+2)
     ld a,e
     ld e,d
     ld d,a
@@ -926,7 +932,7 @@ _SHA_PROCESS_BLOCK_AFTER_T1_COMPLETED:
     pop de
     pop hl
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR2:
+_PROCESS_BLOCK_AFTER_ROTR2:
 
     ; HLDE = ROTR^13(HLDE) = ROTR^5(HLDE), save as EHLD:
     ; .......0 .......1 .......2 .......3    HLDE
@@ -974,7 +980,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR2:
     ;ld h,e
     ;ld e,a
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR13:
+_PROCESS_BLOCK_AFTER_ROTR13:
 
     ; T2 = T2 XOR EHLD = ROTR^2(a) XOR ROTR^13(a)
 
@@ -994,7 +1000,7 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR13:
     pop de
     pop hl
 
-_SHA_PROCESS_BLOCK_AFTER_T2XOR:
+_PROCESS_BLOCK_AFTER_T2XOR:
 
     ; HLDE = ROTR^22(HLDE) = ROTL^2(HLDE), save as LDEH:
     ; .......0 .......1 .......2 .......3    HLDE
@@ -1021,7 +1027,7 @@ _SHA_PROCESS_BLOCK_AFTER_T2XOR:
     ;ld d,l
     ;ld l,a
 
-_SHA_PROCESS_BLOCK_AFTER_ROTR22:
+_PROCESS_BLOCK_AFTER_ROTR22:
 
     ; T2 = T2 XOR LDEH = ROTR^2(a) XOR ROTR^13(a) XOR ROTR22(a) = BSIG0(a)
 
@@ -1038,11 +1044,11 @@ _SHA_PROCESS_BLOCK_AFTER_ROTR22:
     xor h
     ld (iy+4+3),a
 
-_SHA_PROCESS_BLOCK_AFTER_BSIG0:
+_PROCESS_BLOCK_AFTER_BSIG0:
 
     ;>>> Calculate HLDE = MAJ(a,b,c) = (a AND b) XOR (a AND c) XOR (b AND c)
 
-    ld iy,SHA_A
+    ld iy,:SHA256.A
     
     ; 1st byte
 
@@ -1112,13 +1118,13 @@ _SHA_PROCESS_BLOCK_AFTER_BSIG0:
 
     ld e,a
 
-_SHA_PROCESS_BLOCK_AFTER_MAJ:
+_PROCESS_BLOCK_AFTER_MAJ:
 
     ; >>> T2 = T2 + HLDE = BSIG0(a) + MAJ(a,b,c)
 
     push hl
 
-    ld hl,(SHA_T2+2)
+    ld hl,(T2+2)
     ld a,h
     ld h,l
     ld l,a
@@ -1126,11 +1132,11 @@ _SHA_PROCESS_BLOCK_AFTER_MAJ:
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_T2+2),hl
+    ld (T2+2),hl
 
     pop hl
 
-    ld de,(SHA_T2)
+    ld de,(T2)
     ld a,d
     ld d,e
     ld e,a
@@ -1138,9 +1144,9 @@ _SHA_PROCESS_BLOCK_AFTER_MAJ:
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_T2),hl
+    ld (T2),hl
 
-_SHA_PROCESS_BLOCK_AFTER_T2_COMPLETED:
+_PROCESS_BLOCK_AFTER_T2_COMPLETED:
 
     ;>>> Update a-h
 
@@ -1149,21 +1155,21 @@ _SHA_PROCESS_BLOCK_AFTER_T2_COMPLETED:
     ; f = e
 
     push bc
-    ld hl,SHA_G+3
-    ld de,SHA_H+3
+    ld hl,G+3
+    ld de,H+3
     ld bc,4*3
     lddr
     pop bc
 
-_SHA_PROCESS_BLOCK_AFTER_EFGH:
+_PROCESS_BLOCK_AFTER_EFGH:
 
     ; e = d + T1
 
-    ld hl,(SHA_D+2)
+    ld hl,(D+2)
     ld a,h
     ld h,l
     ld l,a
-    ld de,(SHA_T1+2)
+    ld de,(T1+2)
     ld a,d
     ld d,e
     ld e,a
@@ -1171,13 +1177,13 @@ _SHA_PROCESS_BLOCK_AFTER_EFGH:
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_E+2),hl
+    ld (E+2),hl
 
-    ld hl,(SHA_D)
+    ld hl,(D)
     ld a,h
     ld h,l
     ld l,a
-    ld de,(SHA_T1)
+    ld de,(T1)
     ld a,d
     ld d,e
     ld e,a
@@ -1185,30 +1191,30 @@ _SHA_PROCESS_BLOCK_AFTER_EFGH:
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_E),hl
+    ld (E),hl
 
-_SHA_PROCESS_BLOCK_AFTER_E:
+_PROCESS_BLOCK_AFTER_E:
 
     ; d = c
     ; c = b
     ; b = a
 
     push bc
-    ld hl,SHA_C+3
-    ld de,SHA_D+3
+    ld hl,C+3
+    ld de,D+3
     ld bc,4*3
     lddr
     pop bc
 
-_SHA_PROCESS_BLOCK_AFTER_ABCD:
+_PROCESS_BLOCK_AFTER_ABCD:
 
     ; a = T1 + T2
 
-    ld hl,(SHA_T1+2)
+    ld hl,(T1+2)
     ld a,h
     ld h,l
     ld l,a
-    ld de,(SHA_T2+2)
+    ld de,(T2+2)
     ld a,d
     ld d,e
     ld e,a
@@ -1216,13 +1222,13 @@ _SHA_PROCESS_BLOCK_AFTER_ABCD:
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_A+2),hl
+    ld (A+2),hl
 
-    ld hl,(SHA_T1)
+    ld hl,(T1)
     ld a,h
     ld h,l
     ld l,a
-    ld de,(SHA_T2)
+    ld de,(T2)
     ld a,d
     ld d,e
     ld e,a
@@ -1230,9 +1236,9 @@ _SHA_PROCESS_BLOCK_AFTER_ABCD:
     ld a,h
     ld h,l
     ld l,a
-    ld (SHA_A),hl
+    ld (A),hl
 
-_SHA_PROCESS_BLOCK_AFTER_A:
+_PROCESS_BLOCK_AFTER_A:
 
     ; >>> Main hash computation step completed
 
@@ -1248,17 +1254,17 @@ _SHA_PROCESS_BLOCK_AFTER_A:
     inc iy
 
     dec b
-    jp nz,SHA_PROCESS_HASH_COMP_LOOP
+    jp nz,PROCESS_HASH_COMP_LOOP
 
     ; >>> H(i)0 = a + H(i-1)0
     ;     ...
     ;     H(i)7 = h + H(i-1)7
 
-    ld ix,SHA_A
-    ld iy,SHA_H0
+    ld ix,:SHA256.A
+    ld iy,H0
     ld b,8
 
-SHA_PROCESS_H_LOOP:
+PROCESS_H_LOOP:
     ld h,(ix+2)
     ld l,(ix+3)
     ld d,(iy+2)
@@ -1284,9 +1290,9 @@ SHA_PROCESS_H_LOOP:
     inc iy
     inc iy
 
-    djnz SHA_PROCESS_H_LOOP
+    djnz PROCESS_H_LOOP
 
-_SHA_PROCESS_BLOCK_AFTER_END:
+_PROCESS_BLOCK_AFTER_END:
 
     ret
     
@@ -1295,46 +1301,46 @@ _SHA_PROCESS_BLOCK_AFTER_END:
 ; Data area 
 ;----------------------------------------
 
-SHA_H0: ds 4
-SHA_H1: ds 4
-SHA_H2: ds 4
-SHA_H3: ds 4
-SHA_H4: ds 4
-SHA_H5: ds 4
-SHA_H6: ds 4
-SHA_H7: ds 4
+H0: ds 4
+H1: ds 4
+H2: ds 4
+H3: ds 4
+H4: ds 4
+H5: ds 4
+H6: ds 4
+H7: ds 4
 
-SHA_A: ds 4
-SHA_B: ds 4
-SHA_C: ds 4
-SHA_D: ds 4
-SHA_E: ds 4
-SHA_F: ds 4
-SHA_G: ds 4
-SHA_H: ds 4
+A: ds 4
+B: ds 4
+C: ds 4
+D: ds 4
+E: ds 4
+F: ds 4
+G: ds 4
+H: ds 4
 
-SHA_W: ds 64*4
+W: ds 64*4
 
-SHA_STATE_START:
+STATE_START:
 
-SHA_TOTAL_LEN: ds 8 ;Accumulated total message length in bytes (8 bytes)
+TOTAL_LEN: ds 8 ;Accumulated total message length in bytes (8 bytes)
 
-SHA_T1: ds 4
-SHA_T2: ds 4
+T1: ds 4
+T2: ds 4
 
-SHA_BUFFER_LEN: dw 0 ;Number of bytes buffered in the temporary 64-bit block buffer (1 byte, dw on purpose)
-SHA_BUFFER_PNT: dw 0 ;Pointer to continue filling the temporary 64-bit block buffer (2 bytes)
-SHA_BUFFER: ds 64 ;Temporary 64-bit block buffer
+BUFFER_LEN: dw 0 ;Number of bytes buffered in the temporary 64-bit block buffer (1 byte, dw on purpose)
+BUFFER_PNT: dw 0 ;Pointer to continue filling the temporary 64-bit block buffer (2 bytes)
+BUFFER: ds 64 ;Temporary 64-bit block buffer
 
-SHA_DATA_LEN:	defw	0	;Length of block passed to SHA_CONTINUE, in bytes
-SHA_DATA_PNT:	defw	0	;Pointer to the block passed to SHA_CONTINUE
+DATA_LEN:	defw	0	;Length of block passed to CONTINUE, in bytes
+DATA_PNT:	defw	0	;Pointer to the block passed to CONTINUE
 
-SHA_STATE_END:
+STATE_END:
 
-SHA_ZERO_PAD:	defb	80h	;Source for final padding
+ZERO_PAD:	defb	80h	;Source for final padding
             defs	64-1
 
-SHA_INITIAL_H:
+INITIAL_H:
     db 6ah, 09h, 0e6h, 67h
     db 0bbh, 67h, 0aeh, 85h
     db 3ch, 6eh, 0f3h, 72h
@@ -1343,9 +1349,9 @@ SHA_INITIAL_H:
     db 9bh, 05h, 68h, 8ch
     db 1fh, 83h, 0d9h, 0abh
     db 5bh, 0e0h, 0cdh, 19h
-SHA_INITIAL_H_END:
+INITIAL_H_END:
 
-SHA_K:
+K:
     db 42h, 8ah, 2fh, 98h
     db 71h, 37h, 44h, 91h
     db 0b5h, 0c0h, 0fbh, 0cfh
@@ -1412,3 +1418,5 @@ SHA_K:
     db 0c6h, 71h, 78h, 0f2h
 
     endmod
+
+    end

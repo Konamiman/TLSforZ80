@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Konamiman.TLSforZ80.TlsClient;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
@@ -37,7 +38,7 @@ internal class TrafficKeys
         hashSize = hmacAlgorithm.HashSize / 8; //We get bits, but we need bytes
         this.keyLength = keyLength;
         this.ivLength = ivLength;
-        emptyHash = hash.ComputeHash(empty);
+        emptyHash = Z80Runner.CalculateSHA256(empty);
     }
 
     /// <summary>

@@ -2,7 +2,7 @@
   "profiles": {
     "TlsConsole": {
       "commandName": "Project",
-      "commandLineArgs": "tls13.1d.pw"
+      "commandLineArgs": "tls13.1d.pw -hg"
     }
   }
 }

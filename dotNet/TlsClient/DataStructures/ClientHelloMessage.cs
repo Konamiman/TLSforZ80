@@ -25,8 +25,6 @@ namespace Konamiman.TlsForZ80.TlsClient.DataStructures
 
         public byte[] P256PublicKey { get; set; } = null;
 
-        public byte[] X25519PublicKey { get; set; } = null;
-
         public string ServerName { get; set; } = null;
 
         /// <summary>
@@ -46,10 +44,6 @@ namespace Konamiman.TlsForZ80.TlsClient.DataStructures
 
             if(P256PublicKey is null) {
                 throw new InvalidOperationException($"{P256PublicKey} can't be null");
-            }
-
-            if(X25519PublicKey is null) {
-                throw new InvalidOperationException($"{X25519PublicKey} can't be null");
             }
 
             var extensions = GetExtensions();
@@ -89,23 +83,19 @@ namespace Konamiman.TlsForZ80.TlsClient.DataStructures
                 //supported_groups
 
                 ..((ushort)HandshakeExtensionType.SupportedGroups).ToBigEndianUint16Bytes(),
-                0, 6, // Extension size
-                0, 4, // Data size
+                0, 4, // Extension size
+                0, 2, // Data size
                 ..((ushort)SupportedGroup.SECP_256_R1).ToBigEndianUint16Bytes(),
-                ..((ushort)SupportedGroup.X25519).ToBigEndianUint16Bytes(),
 
                 //key_share
 
                 ..((ushort)HandshakeExtensionType.KeyShare).ToBigEndianUint16Bytes(),
-                0, 107, // Extension size
-                0, 105, // Data size
+                0, 71, // Extension size
+                0, 69, // Data size
                 ..((ushort)SupportedGroup.SECP_256_R1).ToBigEndianUint16Bytes(),
                 0, 65, // Key size
                 4, //Legacy form
                 ..P256PublicKey,
-                ..((ushort)SupportedGroup.X25519).ToBigEndianUint16Bytes(),
-                0, 32, // Key size
-                ..X25519PublicKey,
 
                 //signature_algorithms
 

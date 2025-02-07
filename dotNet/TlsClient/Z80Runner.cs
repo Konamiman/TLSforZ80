@@ -1,11 +1,16 @@
 ﻿using Konamiman.Nestor80.Assembler;
+using Konamiman.Nestor80.Linker;
 using Konamiman.PocketZ80;
+using System.Net;
 using System.Reflection;
 
 namespace Konamiman.TLSforZ80.TlsClient;
 
 internal class Z80Runner
 {
+    const int BUFFER_IN = 0x8000;
+    const int BUFFER_OUT = 0xC000;
+
     private static Z80Processor Z80;
 
     private static Dictionary<string, ushort> symbols = [];
@@ -14,15 +19,17 @@ internal class Z80Runner
     {
         Z80 = new Z80Processor();
 
-        var assemblyAddress = 0x100;
         var z80Codedir = Path.GetFullPath(" ../../../../../../../z80", Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
         var files = Directory.GetFiles(z80Codedir, "*.asm");
+        var linkingSequence = new List<ILinkingSequenceItem>() {
+            new SetCodeBeforeDataMode(),
+            new SetCodeSegmentAddress() { Address = 0x100 }
+        };
+        var tempFiles = new List<(string, FileStream)>();
 
         foreach(var file in files) {
-            var z80SourceCode = $"  org {assemblyAddress:X}h\r\n" + File.ReadAllText(file);
-
-            var assemblyResult = AssemblySourceProcessor.Assemble(z80SourceCode, new AssemblyConfiguration() {
-                BuildType = BuildType.Absolute
+            var assemblyResult = AssemblySourceProcessor.Assemble(File.ReadAllText(file), new AssemblyConfiguration() {
+                BuildType = BuildType.Relocatable,
             });
 
             if(assemblyResult.HasErrors) {
@@ -30,13 +37,48 @@ internal class Z80Runner
                 throw new Exception($"Error assembling file {Path.GetFileName(file)}:\r\n\r\n" + errorString);
             }
 
-            var ms = new MemoryStream();
-            var size = OutputGenerator.GenerateAbsolute(assemblyResult, ms);
+            assemblyResult.ProgramName = Path.GetFileNameWithoutExtension(file);
+            var tempFile = Path.GetTempFileName();
+            var tempFileStream = File.OpenWrite(tempFile);
 
-            Array.Copy(ms.ToArray(), 0, Z80.Memory, assemblyAddress, size);
-            assemblyAddress += size;
+            var size = OutputGenerator.GenerateRelocatable(assemblyResult, tempFileStream, true, true);
+            tempFileStream.Close();
+            linkingSequence.Add(new RelocatableFileReference() {
+                FullName = tempFile,
+                DisplayName = Path.GetFileName(file),
+            });
 
-            symbols = new[] { symbols, assemblyResult.Symbols.ToDictionary(s => s.Name, s => s.Value) }.SelectMany(x => x).ToDictionary();
+            var x = Path.GetTempFileName();
+            var sw = new StreamWriter(x);
+            ListingFileGenerator.GenerateListingFile(assemblyResult, sw, new ListingFileConfiguration() {
+                MaxSymbolLength = 100
+            });
+            sw.Close();
+            var z = File.ReadAllText(x);
+        }
+
+        var config = new LinkingConfiguration() {
+            LinkingSequenceItems = linkingSequence.ToArray(),
+            OpenFile = file => { var stream = File.OpenRead(file); tempFiles.Add((file, stream)); return stream; },
+            //StartAddress = 0x100
+        };
+
+        var outputFile = Path.GetTempFileName();
+        var outputStream = File.OpenWrite(outputFile);
+        var linkingResult = RelocatableFilesProcessor.Link(config, outputStream);
+        outputStream.Close();
+        var outputBytes = File.ReadAllBytes(outputFile);
+        Array.Copy(outputBytes, 0, Z80.Memory, 0x100, outputBytes.Length);
+
+        foreach(var programInfo in linkingResult.ProgramsData) {
+            foreach(var symbol in programInfo.PublicSymbols) {
+                symbols.Add(symbol.Key, symbol.Value);
+            }
+        }
+
+        foreach(var file in tempFiles) {
+            file.Item2.Close();
+            File.Delete(file.Item1);
         }
     }
 
@@ -46,5 +88,34 @@ internal class Z80Runner
         Z80.Start(symbols["FOOBAR.DO"]);
         Z80.Start(symbols["FIZZBUZZ.DO"]);
         return (byte)(Z80.A + Z80.B);
+    }
+
+    public static byte[] CalculateSHA256(byte[] data)
+    {
+        Z80.A = 3;
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.BC = (short)data.Length;
+        Z80.DE = unchecked((short)BUFFER_OUT);
+
+        SetInputBuffer(data);
+        Run("SHA256.RUN");
+        return GetOutputBuffer(32);
+    }
+
+    private static void SetInputBuffer(byte[] data)
+    {
+        if(data.Length > 0) {
+            Array.Copy(data, 0, Z80.Memory, BUFFER_IN, data.Length);
+        }
+    }
+
+    private static byte[] GetOutputBuffer(int length)
+    {
+        return Z80.Memory.Skip(BUFFER_OUT).Take(length).ToArray();
+    }
+
+    private static void Run(string symbol)
+    {
+        Z80.Start(symbols[symbol]);
     }
 }

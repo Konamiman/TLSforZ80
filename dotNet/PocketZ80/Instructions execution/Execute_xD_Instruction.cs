@@ -13,7 +13,7 @@
             }
             else
             {
-                DD_InstructionExecutors[Memory[PC++]]();
+                DD_InstructionExecutors[secondOpcodeByte]();
             }
         }
 
@@ -28,7 +28,7 @@
             }
             else
             {
-                FD_InstructionExecutors[Memory[PC++]]();
+                FD_InstructionExecutors[secondOpcodeByte]();
             }
         }
     }
