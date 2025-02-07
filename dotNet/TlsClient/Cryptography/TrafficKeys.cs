@@ -142,7 +142,7 @@ internal class TrafficKeys
     private byte[] Extract(byte[] salt, byte[] ikm)
     {
         hmac.Key = salt;
-        return hmac.ComputeHash(ikm);
+        return Z80Runner.CalculateHMAC(salt, ikm);
     }
 
     /// <summary>
@@ -162,7 +162,7 @@ internal class TrafficKeys
         var previous = empty;
 
         for(var i = 0; i < steps; i++) {
-            previous = hmac.ComputeHash([.. previous, .. info, .. singleByte]);
+            previous = Z80Runner.CalculateHMAC(prk, [.. previous, .. info, .. singleByte]);
             result.AddRange(previous);
             singleByte[0]++;
         }

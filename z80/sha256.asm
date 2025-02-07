@@ -1,7 +1,3 @@
-    public SHA256.INIT
-    public SHA256.CONTINUE
-    public SHA256.FINALIZE
-    public SHA256.SINGLESTEP
     public SHA256.RUN
 
     module SHA256

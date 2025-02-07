@@ -1,10 +1,9 @@
-    extrn SHA256.INIT
-    extrn SHA256.CONTINUE
-    extrn SHA256.FINALIZE
-    extrn SHA256.SINGLESTEP
+	public HMAC.RUN
 	extrn SHA256.RUN
 
     module HMAC
+
+	root SHA256.RUN
 
 ;--- HMAC-SHA256 hashing routine for Z80
 ;    Algorithm specification: https://datatracker.ietf.org/doc/html/rfc2104
@@ -37,37 +36,38 @@
 ;       A  = 2
 ;       DE = Address for the generated SHA256 32-byte hash
 
-HMAC_SINGLESTEP:
+RUN:
 	or	a
-	jr	z,HMAC_INIT
+	jr	z,INIT
 
-	dec a
-	jp	z,:SHA256.CONTINUE
+	cp 1
+	jp	z,SHA256.RUN
 
-	dec a
-	jr	z,HMAC_FINALIZE
+	cp 2
+	jr	z,FINALIZE
 
-HMAC_ONESTEP:
+SINGLESTEP:
 	push	de
 	push	bc
     push ix
 	ex	de,hl
-	call	HMAC_INIT
+	call	INIT
     pop hl
 	pop	bc
-	call	:SHA256.CONTINUE
+	ld a,1
+	call	SHA256.RUN
 	pop	de
-	jp	HMAC_FINALIZE
+	jp	FINALIZE
 
 
 	;--- Initialization:
 	;    Hash (key xor ipad) and leave the hashing engine
 	;    ready for hashing message chunks
 
-HMAC_INIT:
+INIT:
 	push	de	;Initialize zero padding for key
-	ld	hl,HMAC_KEY
-	ld	de,HMAC_KEY+1
+	ld	hl,KEY
+	ld	de,KEY+1
 	ld	(hl),0
 	ld	bc,64-1
 	ldir
@@ -75,114 +75,118 @@ HMAC_INIT:
 
     ld a,d
     or a
-    jr nz,HMAC_LONGKEY
+    jr nz,LONGKEY
 	ld	a,e
 	cp 64+1
-	jr	c,HMAC_SHORTKEY
+	jr	c,SHORTKEY
 
-	;* The key is longer than 64 bytes: hash it first to HMAC_KEY
+	;* The key is longer than 64 bytes: hash it first to KEY
 
-HMAC_LONGKEY:
+LONGKEY:
 	push	iy
 
 	push	iy
 	pop	hl
 	push	de
 	pop	bc
-	ld	de,HMAC_KEY
-	call	:SHA256.SINGLESTEP
+	ld	de,KEY
+	ld a,3
+	call	SHA256.RUN
 
 	pop	iy
-	ld	de,HMAC_KEY
-	jr	HMAC_DO_IPAD
+	ld	de,KEY
+	jr	DO_IPAD
 
-	;* Copy the original key or the hashed one to HMAC_KEY
+	;* Copy the original key or the hashed one to KEY
 
-HMAC_SHORTKEY:
+SHORTKEY:
 	ld	a,d
 	or	e
-	jr	z,HMAC_DO_IPAD	;Empty key?
+	jr	z,DO_IPAD	;Empty key?
 
 	push	de
 	pop	bc
 	push	iy
 	pop	hl
-	ld	de,HMAC_KEY
+	ld	de,KEY
 	ldir
 
 	;* Apply ipad
 
-HMAC_DO_IPAD:
-	ld	hl,HMAC_KEY
+DO_IPAD:
+	ld	hl,KEY
 	ld	b,64
-HMAC_IPAD_LOOP:
+IPAD_LOOP:
 	ld	a,(hl)
 	xor	36h
 	ld	(hl),a
 	inc	hl
-	djnz	HMAC_IPAD_LOOP
+	djnz	IPAD_LOOP
 	
 	;* Initialize the hashing procedure, then hash the processed key
 
-	call	:SHA256.INIT
+	xor a
+	call	SHA256.RUN
 
-	ld	hl,HMAC_KEY
+	ld	hl,KEY
 	ld	bc,64
-	jp	:SHA256.CONTINUE
+	ld a,1
+	jp	SHA256.RUN
 
 	
 	;--- Finalization:
 	;    Finish the internal hash, then hash (key xor opad) || (internal hash)
 
-HMAC_FINALIZE:
+FINALIZE:
 	push	de
 
-	ld	de,HMAC_INTERNAL
-	call	:SHA256.FINALIZE
+	ld	de,INTERNAL
+	ld a,2
+	call	SHA256.RUN
 
 	;* Xor the key with opad (5Ch).
 	;  Since the key was already XORed with ipad (36h),
 	;  we xor with (ipad xor opad) = 6Ah.
 
-HMAC_DO_OPAD:
-	ld	hl,HMAC_KEY
+DO_OPAD:
+	ld	hl,KEY
 	ld	b,64
-HMAC_OPAD_LOOP:
+OPAD_LOOP:
 	ld	a,(hl)
 	xor	6Ah
 	ld	(hl),a
 	inc	hl
-	djnz	HMAC_OPAD_LOOP
+	djnz	OPAD_LOOP
 
 	;* Initialize the hashing procedure, then hash the processed key
 
-	xor	a
-	call	:SHA256.SINGLESTEP
+	xor a
+	call	SHA256.RUN
 
 	ld	a,1
-	ld	hl,HMAC_KEY
+	ld	hl,KEY
 	ld	bc,64
-	call	:SHA256.RUN
+	call	SHA256.RUN
 
 	;* Finally, hash the internal hash
 
-	ld	a,1
-	ld	hl,HMAC_INTERNAL
+	ld	hl,INTERNAL
 	ld	bc,32
 	ld	b,0
-	call	:SHA256.RUN
+	ld	a,1
+	call	SHA256.RUN
 
 	pop	de
 	ld	a,2
-	jp	:SHA256.RUN
+	jp	SHA256.RUN
 	
 
 ;----------------------------------------
 ; Data area 
 ;----------------------------------------
 
-HMAC_KEY:	defs	64
-HMAC_INTERNAL:	defs	32
+KEY:	defs	64
+INTERNAL:	defs	32
 
     endmod
 

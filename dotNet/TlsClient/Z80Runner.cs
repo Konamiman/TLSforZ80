@@ -1,7 +1,6 @@
 ﻿using Konamiman.Nestor80.Assembler;
 using Konamiman.Nestor80.Linker;
 using Konamiman.PocketZ80;
-using System.Net;
 using System.Reflection;
 
 namespace Konamiman.TLSforZ80.TlsClient;
@@ -102,10 +101,25 @@ internal class Z80Runner
         return GetOutputBuffer(32);
     }
 
-    private static void SetInputBuffer(byte[] data)
+    public static byte[] CalculateHMAC(byte[] key, byte[] data)
+    {
+        Z80.A = 3;
+        Z80.IX = unchecked((short)BUFFER_IN);
+        Z80.BC = (short)data.Length;
+        Z80.IY = unchecked((short)(BUFFER_IN+data.Length));
+        Z80.HL = (short)key.Length;
+        Z80.DE = unchecked((short)BUFFER_OUT);
+
+        SetInputBuffer(data);
+        SetInputBuffer(key, BUFFER_IN+data.Length);
+        Run("HMAC.RUN");
+        return GetOutputBuffer(32);
+    }
+
+    private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {
-            Array.Copy(data, 0, Z80.Memory, BUFFER_IN, data.Length);
+            Array.Copy(data, 0, Z80.Memory, address, data.Length);
         }
     }
 
