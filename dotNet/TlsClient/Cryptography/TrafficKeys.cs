@@ -16,8 +16,8 @@ internal class TrafficKeys
     readonly HMAC hmac;
     readonly HashAlgorithm hash;
     readonly int hashSize;
-    readonly int keyLength;
-    readonly int ivLength;
+    const int keyLength = 16;
+    const int ivLength = 12;
     static readonly byte[] empty = [];
     byte[] handshakeSecret = null;
     readonly byte[] emptyHash;
@@ -31,13 +31,11 @@ internal class TrafficKeys
 
     public event EventHandler<bool> KeysGenerated; //true=for server, false=for client
 
-    public TrafficKeys(HMAC hmacAlgorithm, HashAlgorithm hashAlgorithgm, int keyLength, int ivLength)
+    public TrafficKeys(HMAC hmacAlgorithm, HashAlgorithm hashAlgorithgm)
     {
         this.hmac = hmacAlgorithm;
         this.hash = hashAlgorithgm;
         hashSize = hmacAlgorithm.HashSize / 8; //We get bits, but we need bytes
-        this.keyLength = keyLength;
-        this.ivLength = ivLength;
         emptyHash = Z80Runner.CalculateSHA256(empty);
     }
 
@@ -49,13 +47,18 @@ internal class TrafficKeys
     /// <param name="handshakeHash"></param>
     public void ComputeHandshakeKeys(byte[] sharedSecret, byte[] handshakeHash)
     {
-        var earlySecret = Extract(empty, Enumerable.Repeat<byte>(0, hashSize).ToArray());
-        var derivedSecret = ExpandLabel(earlySecret, "derived", emptyHash, hashSize);
-        handshakeSecret = Extract(derivedSecret, sharedSecret);
+        var keys = Z80Runner.ComputeHandshakeKeys(sharedSecret, handshakeHash);
+        clientSecret = keys[0];
+        serverSecret = keys[1];
+        ClientKey = keys[2];
+        ServerKey = keys[3];
+        ClientIv = keys[4];
+        ServerIv = keys[5];
 
-        clientSecret = ExpandLabel(handshakeSecret, $"c hs traffic", handshakeHash, hashSize);
-        serverSecret = ExpandLabel(handshakeSecret, $"s hs traffic", handshakeHash, hashSize);
-        ComputeKeysFromSecrets();
+        if(KeysGenerated is not null) {
+            KeysGenerated(this, true);
+            KeysGenerated(this, false);
+        }
     }
 
     /// <summary>
@@ -65,16 +68,18 @@ internal class TrafficKeys
     /// <param name="handshakeHash"></param>
     public void ComputeApplicationKeys(byte[] handshakeHash)
     {
-        if(handshakeSecret is null) {
-            throw new InvalidOperationException($"{nameof(ComputeApplicationKeys)} can't be invoked before ${nameof(ComputeHandshakeKeys)}");
+        var keys = Z80Runner.ComputeApplicationKeys(handshakeHash);
+        clientSecret = keys[0];
+        serverSecret = keys[1];
+        ClientKey = keys[2];
+        ServerKey = keys[3];
+        ClientIv = keys[4];
+        ServerIv = keys[5];
+
+        if(KeysGenerated is not null) {
+            KeysGenerated(this, true);
+            KeysGenerated(this, false);
         }
-
-        var derivedSecret = ExpandLabel(handshakeSecret, "derived", emptyHash, hashSize);
-        var masterSecret = Extract(derivedSecret, Enumerable.Repeat<byte>(0, hashSize).ToArray());
-
-        clientSecret = ExpandLabel(masterSecret, $"c ap traffic", handshakeHash, hashSize);
-        serverSecret = ExpandLabel(masterSecret, $"s ap traffic", handshakeHash, hashSize);
-        ComputeKeysFromSecrets();
     }
 
     /// <summary>

@@ -47,19 +47,20 @@ internal class Z80Runner
                 DisplayName = Path.GetFileName(file),
             });
 
-            var x = Path.GetTempFileName();
+            /*
+            var x = new MemoryStream();
             var sw = new StreamWriter(x);
             ListingFileGenerator.GenerateListingFile(assemblyResult, sw, new ListingFileConfiguration() {
                 MaxSymbolLength = 100
             });
             sw.Close();
-            var z = File.ReadAllText(x);
+            var l = Encoding.UTF8.GetString(x.ToArray());
+            */
         }
 
         var config = new LinkingConfiguration() {
             LinkingSequenceItems = linkingSequence.ToArray(),
-            OpenFile = file => { var stream = File.OpenRead(file); tempFiles.Add((file, stream)); return stream; },
-            //StartAddress = 0x100
+            OpenFile = file => { var stream = File.OpenRead(file); tempFiles.Add((file, stream)); return stream; }
         };
 
         var outputFile = Path.GetTempFileName();
@@ -114,6 +115,41 @@ internal class Z80Runner
         SetInputBuffer(key, BUFFER_IN+data.Length);
         Run("HMAC.RUN");
         return GetOutputBuffer(32);
+    }
+
+    public static byte[][] ComputeHandshakeKeys(byte[] sharedSecret, byte[] handshakeHash)
+    {
+        return ComputeKeys(sharedSecret, handshakeHash);
+    }
+
+    public static byte[][] ComputeApplicationKeys(byte[] handshakeHash)
+    {
+        return ComputeKeys(null, handshakeHash);
+    }
+
+    private static byte[][] ComputeKeys(byte[] sharedSecret, byte[] handshakeHash)
+    {
+        Z80.HL = unchecked((short)BUFFER_IN);
+        SetInputBuffer(handshakeHash);
+        Z80.IY = unchecked((short)BUFFER_OUT);
+        if(sharedSecret != null) {
+            Z80.IX = unchecked((short)(BUFFER_IN + handshakeHash.Length));
+            SetInputBuffer(sharedSecret, BUFFER_IN + handshakeHash.Length);
+            Z80.Start(symbols["HKDF.DERIVE_HS_KEYS"]);
+        }
+        else {
+            Z80.Start(symbols["HKDF.DERIVE_AP_KEYS"]);
+        }
+
+        var output = GetOutputBuffer(120);
+        return [
+            output.Take(32).ToArray(),
+            output.Skip(32).Take(32).ToArray(),
+            output.Skip(32+32).Take(16).ToArray(),
+            output.Skip(32+32+16).Take(16).ToArray(),
+            output.Skip(32+32+16+16).Take(12).ToArray(),
+            output.Skip(32+32+16+16+12).Take(12).ToArray()
+        ];
     }
 
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
