@@ -2,11 +2,14 @@
     public HKDF.DERIVE_AP_KEYS
     extrn HMAC.RUN
     extrn SHA256.RUN
+    extrn SHA256.HASH_OF_EMPTY
 
     module HKDF
 
     root HMAC.RUN
     root SHA256.RUN
+    root SHA256.HASH_OF_EMPTY
+
 
 ;--- Z80 code for the derivation of handshake and application keys for TLS
 ;    Algorithm specification: https://datatracker.ietf.org/doc/html/rfc5869
@@ -75,7 +78,7 @@ DERIVE_AP_KEYS:    ;Application keys
     ld a,32
     ld (HKDEFL_LENGTH),a
 
-    ld ix,SHA256_EMPTY ;Context
+    ld ix,SHA256.HASH_OF_EMPTY ;Context
     ld iy,DEVK_SECRET_TMP
     ld bc,2020h    ;B = Key length, C = Context length, both 32
 
@@ -309,20 +312,6 @@ HS_DEVSEC:
     db 0ebh, 0eah, 0c3h, 57h
     db 6ch, 36h, 11h, 0bah
 HS_DEVSEC_END:
-
-
-; SHA256 hash of the empty string
-
-SHA256_EMPTY:
-    db 0e3h, 0b0h, 0c4h, 42h
-    db 98h, 0fch, 1ch, 14h
-    db 9ah, 0fbh, 0f4h, 0c8h
-    db 99h, 6fh, 0b9h, 24h
-    db 27h, 0aeh, 41h, 0e4h
-    db 64h, 9bh, 93h, 4ch
-    db 0a4h, 95h, 99h, 1bh
-    db 78h, 52h, 0b8h, 55h
-SHA256_EMPTY_END:
 
 
 ; - DERIVE_HS_KEYS will calculate handshake_secret and put it here.

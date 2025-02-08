@@ -1,4 +1,5 @@
     public SHA256.RUN
+    public SHA256.HASH_OF_EMPTY
 
     module SHA256
 
@@ -1296,6 +1297,18 @@ _PROCESS_BLOCK_AFTER_END:
 ;----------------------------------------
 ; Data area 
 ;----------------------------------------
+
+; SHA256 hash of the empty string
+
+HASH_OF_EMPTY:
+    db 0e3h, 0b0h, 0c4h, 42h
+    db 98h, 0fch, 1ch, 14h
+    db 9ah, 0fbh, 0f4h, 0c8h
+    db 99h, 6fh, 0b9h, 24h
+    db 27h, 0aeh, 41h, 0e4h
+    db 64h, 9bh, 93h, 4ch
+    db 0a4h, 95h, 99h, 1bh
+    db 78h, 52h, 0b8h, 55h
 
 H0: ds 4
 H1: ds 4
