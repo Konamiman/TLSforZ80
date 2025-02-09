@@ -141,14 +141,13 @@ internal class Z80Runner
             Z80.Start(symbols["HKDF.DERIVE_AP_KEYS"]);
         }
 
-        var output = GetOutputBuffer(120);
         return [
-            output.Take(32).ToArray(),
-            output.Skip(32).Take(32).ToArray(),
-            output.Skip(32+32).Take(16).ToArray(),
-            output.Skip(32+32+16).Take(16).ToArray(),
-            output.Skip(32+32+16+16).Take(12).ToArray(),
-            output.Skip(32+32+16+16+12).Take(12).ToArray()
+            GetOutputBuffer(32, symbols["HKDF.CLIENT_SECRET"]),
+            GetOutputBuffer(32, symbols["HKDF.SERVER_SECRET"]),
+            GetOutputBuffer(16, symbols["HKDF.CLIENT_KEY"]),
+            GetOutputBuffer(16, symbols["HKDF.SERVER_KEY"]),
+            GetOutputBuffer(12, symbols["HKDF.CLIENT_IV"]),
+            GetOutputBuffer(12, symbols["HKDF.SERVER_IV"])
         ];
     }
 
@@ -159,9 +158,9 @@ internal class Z80Runner
         }
     }
 
-    private static byte[] GetOutputBuffer(int length)
+    private static byte[] GetOutputBuffer(int length, int address = BUFFER_OUT)
     {
-        return Z80.Memory.Skip(BUFFER_OUT).Take(length).ToArray();
+        return Z80.Memory.Skip(address).Take(length).ToArray();
     }
 
     private static void Run(string symbol)

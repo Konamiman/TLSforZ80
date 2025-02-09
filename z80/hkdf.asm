@@ -1,5 +1,11 @@
     public HKDF.DERIVE_HS_KEYS
     public HKDF.DERIVE_AP_KEYS
+    public HKDF.CLIENT_SECRET
+    public HKDF.SERVER_SECRET
+    public HKDF.CLIENT_KEY
+    public HKDF.SERVER_KEY
+    public HKDF.CLIENT_IV
+    public HKDF.SERVER_IV
     extrn HMAC.RUN
     extrn SHA256.RUN
     extrn SHA256.HASH_OF_EMPTY
@@ -15,7 +21,6 @@
 ;    Algorithm specification: https://datatracker.ietf.org/doc/html/rfc5869
 ;
 ;    Input: IX = Address of the shared secret (for DERIVE_HS_KEYS only)
-;           IY = Destination buffer for the derived keys (120 bytes)
 ;           HL = Address of hash of handshake messages (32 bytes)
 ;
 ;    DERIVE_AP_KEYS assumes that DEVK_SECRET_TMP contains handshake_secret,
@@ -23,14 +28,14 @@
 ;    Therefore these two must be executed in that order: DERIVE_HS_KEYS first,
 ;    then DERIVE_AP_KEYS.
 ;
-;    The generated keys will be, in this order:
+;    The generated keys will be stored starting at CLIENT_SECRET, in this order:
 ;
-;    +0:   client_handshake/application_traffic_secret (32 bytes)
-;    +32:  server_handshake/application_traffic_secret (32 bytes)
-;    +64:  client_handshake/application_key (16 bytes)
-;    +80:  server_handshake/application_key (16 bytes)
-;    +96:  client_handshake/application_iv (12 bytes)
-;    +108: server_handshake/application_iv (12 bytes)
+;    +0:   CLIENT_SECRET: client_handshake/application_traffic_secret (32 bytes)
+;    +32:  SERVER_SECRET: server_handshake/application_traffic_secret (32 bytes)
+;    +64:  CLIENT_KEY:    client_handshake/application_key (16 bytes)
+;    +80:  SERVER_KEY:    server_handshake/application_key (16 bytes)
+;    +96:  CLIENT_IV:     client_handshake/application_iv (12 bytes)
+;    +108: SERVER_IV:     server_handshake/application_iv (12 bytes)
 
     ;--- Handshake keys
 
@@ -44,7 +49,6 @@ DERIVE_HS_KEYS:    ;Handshake keys
     ;     key = derived_secret, 
     ;     msg = shared_secret)
 
-    push iy
     push hl
 
     ;IX is already the shared secret
@@ -65,7 +69,6 @@ DERIVE_AP_KEYS:    ;Application keys
     ld (STR_CTR+2),de
     ld (STR_STR+2),de
 
-    push iy
     push hl
 
     ;DEVK_HASH_TMP = derived_secret = 
@@ -120,7 +123,7 @@ DERIVE_KEYS_COMMON:
     pop ix  ;Context
     ld c,a  ;Context length
 
-    pop de  ;Destination address
+    ld de,CLIENT_SECRET  ;Destination address
 
     push de
     push ix
@@ -321,6 +324,15 @@ HS_DEVSEC_END:
 ;     master_secret as appropriate.
 
 DEVK_SECRET_TMP: ds 32
+
+; Generated keys will be stored here
+
+CLIENT_SECRET: ds 32
+SERVER_SECRET: ds 32
+CLIENT_KEY: ds 16
+SERVER_KEY: ds 16
+CLIENT_IV: ds 12
+SERVER_IV: ds 12
 
 
 ;--- HKDF-Expand-Label
