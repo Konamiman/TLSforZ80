@@ -2,8 +2,6 @@
     public HKDF.DERIVE_AP_KEYS
     public HKDF.COMPUTE_FINISHED_KEY
     public HKDF.UPDATE_TRAFFIC_KEY
-    public HKDF.CLIENT_SECRET
-    public HKDF.SERVER_SECRET
     public HKDF.CLIENT_KEY
     public HKDF.SERVER_KEY
     public HKDF.CLIENT_IV

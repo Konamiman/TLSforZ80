@@ -611,7 +611,7 @@ public class TlsClientConnection
 
             hashAlgorithm = SHA256.Create();
             hmacAlgorithm = new HMACSHA256();
-            keys = new TrafficKeys(hmacAlgorithm, hashAlgorithm);
+            keys = new TrafficKeys();
 
             byte[] sharedSecret;
             var remoteEcdhKey = ECDiffieHellman.Create(new ECParameters {

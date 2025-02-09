@@ -13,17 +13,6 @@ namespace Konamiman.TlsForZ80.TlsClient.Cryptography;
 /// </summary>
 internal class TrafficKeys
 {
-    readonly HMAC hmac;
-    readonly HashAlgorithm hash;
-    readonly int hashSize;
-    const int keyLength = 16;
-    const int ivLength = 12;
-    static readonly byte[] empty = [];
-    byte[] handshakeSecret = null;
-    readonly byte[] emptyHash;
-    byte[] clientSecret;
-    byte[] serverSecret;
-
     public byte[] ClientKey { get; private set; }
     public byte[] ServerKey { get; private set; }
     public byte[] ClientIv { get; private set; }
@@ -31,12 +20,8 @@ internal class TrafficKeys
 
     public event EventHandler<bool> KeysGenerated; //true=for server, false=for client
 
-    public TrafficKeys(HMAC hmacAlgorithm, HashAlgorithm hashAlgorithgm)
+    public TrafficKeys()
     {
-        this.hmac = hmacAlgorithm;
-        this.hash = hashAlgorithgm;
-        hashSize = hmacAlgorithm.HashSize / 8; //We get bits, but we need bytes
-        emptyHash = Z80Runner.CalculateSHA256(empty);
     }
 
     /// <summary>
@@ -48,12 +33,10 @@ internal class TrafficKeys
     public void ComputeHandshakeKeys(byte[] sharedSecret, byte[] handshakeHash)
     {
         var keys = Z80Runner.ComputeHandshakeKeys(sharedSecret, handshakeHash);
-        clientSecret = keys[0];
-        serverSecret = keys[1];
-        ClientKey = keys[2];
-        ServerKey = keys[3];
-        ClientIv = keys[4];
-        ServerIv = keys[5];
+        ClientKey = keys[0];
+        ServerKey = keys[1];
+        ClientIv = keys[2];
+        ServerIv = keys[3];
 
         if(KeysGenerated is not null) {
             KeysGenerated(this, true);
@@ -69,12 +52,10 @@ internal class TrafficKeys
     public void ComputeApplicationKeys(byte[] handshakeHash)
     {
         var keys = Z80Runner.ComputeApplicationKeys(handshakeHash);
-        clientSecret = keys[0];
-        serverSecret = keys[1];
-        ClientKey = keys[2];
-        ServerKey = keys[3];
-        ClientIv = keys[4];
-        ServerIv = keys[5];
+        ClientKey = keys[0];
+        ServerKey = keys[1];
+        ClientIv = keys[2];
+        ServerIv = keys[3];
 
         if(KeysGenerated is not null) {
             KeysGenerated(this, true);
@@ -89,9 +70,8 @@ internal class TrafficKeys
     public void UpdateClientKeys()
     {
         var keys = Z80Runner.UpdateTrafficKey(false);
-        clientSecret = keys[0];
-        ClientKey = keys[1];
-        ClientIv = keys[2];
+        ClientKey = keys[0];
+        ClientIv = keys[1];
 
         if(KeysGenerated is not null) {
             KeysGenerated(this, false);
@@ -105,9 +85,8 @@ internal class TrafficKeys
     public void UpdateServerKeys()
     {
         var keys = Z80Runner.UpdateTrafficKey(true);
-        serverSecret = keys[0];
-        ServerKey = keys[1];
-        ServerIv = keys[2];
+        ServerKey = keys[0];
+        ServerIv = keys[1];
 
         if(KeysGenerated is not null) {
             KeysGenerated(this, true);
@@ -122,75 +101,5 @@ internal class TrafficKeys
     public byte[] ComputeFinishedKey(bool ofServer)
     {
         return Z80Runner.ComputeFinishedKey(ofServer);
-    }
-
-    /// <summary>
-    /// "Extract" function as per RFC5869, section 2.2
-    /// (https://datatracker.ietf.org/doc/html/rfc5869#section-2.2)
-    /// </summary>
-    /// <param name="salt"></param>
-    /// <param name="ikm"></param>
-    /// <returns></returns>
-    private byte[] Extract(byte[] salt, byte[] ikm)
-    {
-        hmac.Key = salt;
-        return Z80Runner.CalculateHMAC(salt, ikm);
-    }
-
-    /// <summary>
-    /// "Expand" function as per RFC5869, section 2.3
-    /// (https://datatracker.ietf.org/doc/html/rfc5869#section-2.3)
-    /// </summary>
-    /// <param name="prk"></param>
-    /// <param name="info"></param>
-    /// <param name="length"></param>
-    /// <returns></returns>
-    private byte[] Expand(byte[] prk, byte[] info, int length)
-    {
-        hmac.Key = prk;
-        var steps = (int)Math.Ceiling((decimal)length / hashSize);
-        var result = new List<byte>();
-        var singleByte = new byte[] { 1 };
-        var previous = empty;
-
-        for(var i = 0; i < steps; i++) {
-            previous = Z80Runner.CalculateHMAC(prk, [.. previous, .. info, .. singleByte]);
-            result.AddRange(previous);
-            singleByte[0]++;
-        }
-
-        return result.Take(length).ToArray();
-    }
-
-    /// <summary>
-    /// "Expand label" function as per RFC8446, section 7.1
-    /// (https://datatracker.ietf.org/doc/html/rfc8446#section-7.1)
-    /// </summary>
-    /// <param name="secret"></param>
-    /// <param name="label"></param>
-    /// <param name="context"></param>
-    /// <param name="length"></param>
-    /// <returns></returns>
-    byte[] ExpandLabel(byte[] secret, string label, byte[] context, int length)
-    {
-        /*
-        struct {
-           uint16 length = Length;
-           opaque label<7..255> = "tls13 " + Label;
-           opaque context<0..255> = Context;
-        } HkdfLabel;
-        */
-
-        var labelBytes = Encoding.ASCII.GetBytes("tls13 " + label);
-
-        byte[] hkdfLabel = [
-            .. length.ToBigEndianUint16Bytes(),
-            (byte)labelBytes.Length, //size indicator for "label<7..255>"
-            .. labelBytes,
-            (byte)context.Length,    //size indicator for "context<0..255>"
-            .. context
-        ];
-
-        return Expand(secret, hkdfLabel, length).Take(length).ToArray();
     }
 }
