@@ -88,8 +88,14 @@ internal class TrafficKeys
     /// </summary>
     public void UpdateClientKeys()
     {
-        clientSecret = ExpandLabel(clientSecret, "traffic upd", empty, hashSize);
-        ComputeKeysFromSecrets(forServer: false);
+        var keys = Z80Runner.UpdateTrafficKey(false);
+        clientSecret = keys[0];
+        ClientKey = keys[1];
+        ClientIv = keys[2];
+
+        if(KeysGenerated is not null) {
+            KeysGenerated(this, false);
+        }
     }
 
     /// <summary>
@@ -98,8 +104,14 @@ internal class TrafficKeys
     /// </summary>
     public void UpdateServerKeys()
     {
-        serverSecret = ExpandLabel(serverSecret, "traffic upd", empty, hashSize);
-        ComputeKeysFromSecrets(forClient: false);
+        var keys = Z80Runner.UpdateTrafficKey(true);
+        serverSecret = keys[0];
+        ServerKey = keys[1];
+        ServerIv = keys[2];
+
+        if(KeysGenerated is not null) {
+            KeysGenerated(this, true);
+        }
     }
 
     /// <summary>
@@ -110,31 +122,6 @@ internal class TrafficKeys
     public byte[] ComputeFinishedKey(bool ofServer)
     {
         return Z80Runner.ComputeFinishedKey(ofServer);
-    }
-
-    /// <summary>
-    /// Derive the handshake or application traffic keys according to RFC8446, section 7.3
-    /// (https://datatracker.ietf.org/doc/html/rfc8446#section-7.3)
-    /// </summary>
-    /// <param name="forClient">True to derive the client keys.</param>
-    /// <param name="forServer">True to derive the server keys.</param>
-    private void ComputeKeysFromSecrets(bool forClient = true, bool forServer = true)
-    {
-        if(forClient) {
-            ClientKey = ExpandLabel(clientSecret, "key", empty, keyLength);
-            ClientIv = ExpandLabel(clientSecret, "iv", empty, ivLength);
-            if(KeysGenerated is not null) {
-                KeysGenerated(this, false);
-            }
-        }
-
-        if(forServer) {
-            ServerKey = ExpandLabel(serverSecret, "key", empty, keyLength);
-            ServerIv = ExpandLabel(serverSecret, "iv", empty, ivLength);
-            if(KeysGenerated is not null) {
-                KeysGenerated(this, true);
-            }
-        }
     }
 
     /// <summary>

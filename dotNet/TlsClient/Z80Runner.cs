@@ -159,6 +159,21 @@ internal class Z80Runner
         return GetOutputBuffer(32);
     }
 
+    public static byte[][] UpdateTrafficKey(bool ofServer)
+    {
+        Z80.CF = ofServer ? 1 : 0;
+        Z80.Start(symbols["HKDF.UPDATE_TRAFFIC_KEY"]);
+        return ofServer ? [
+            GetOutputBuffer(32, symbols["HKDF.SERVER_SECRET"]),
+            GetOutputBuffer(16, symbols["HKDF.SERVER_KEY"]),
+            GetOutputBuffer(12, symbols["HKDF.SERVER_IV"])
+        ] : [
+            GetOutputBuffer(32, symbols["HKDF.CLIENT_SECRET"]),
+            GetOutputBuffer(16, symbols["HKDF.CLIENT_KEY"]),
+            GetOutputBuffer(12, symbols["HKDF.CLIENT_IV"])
+        ];
+    }
+
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {

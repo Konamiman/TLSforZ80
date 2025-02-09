@@ -1,6 +1,7 @@
     public HKDF.DERIVE_HS_KEYS
     public HKDF.DERIVE_AP_KEYS
     public HKDF.COMPUTE_FINISHED_KEY
+    public HKDF.UPDATE_TRAFFIC_KEY
     public HKDF.CLIENT_SECRET
     public HKDF.SERVER_SECRET
     public HKDF.CLIENT_KEY
@@ -304,6 +305,10 @@ STR_FINISHED:
     db "finished"
 STR_FINISHED_END:
 
+STR_TRAFFIC_UPD:
+    db "traffic upd"
+STR_TRAFFIC_UPD_END:
+
 ZEROKEY: ds 32
 DEVK_HASH_TMP: ds 32
 
@@ -340,7 +345,7 @@ CLIENT_IV: ds 12
 SERVER_IV: ds 12
 
 
-;--- Generation of thr "finished" key
+;--- Generation of the "finished" key
 ;    Input: Cy = 0 for the client key, 1 for the server key
 ;           DE = Destination address
 
@@ -354,6 +359,52 @@ COMPUTE_FINISHED_KEY_GO:
     ld bc,2000h
     ld hl,STR_FINISHED
     ld a,STR_FINISHED_END-STR_FINISHED
+    jp EXPAND_LABEL
+
+
+;--- Update of the traffic keys
+;    Input: Cy = 0 for the client key, 1 for the server key
+
+UPDATE_TRAFFIC_KEY:
+    ld hl,CLIENT_IV
+    ld de,CLIENT_KEY
+    ld iy,CLIENT_SECRET
+    jr nc,UPDATE_TRAFFIC_KEY_GO
+    ld hl,SERVER_IV
+    ld de,SERVER_KEY
+    ld iy,SERVER_SECRET
+UPDATE_TRAFFIC_KEY_GO:
+    push hl
+    push de
+    push iy
+
+    push iy
+    pop de
+
+    ld a,32
+    ld (HKDEFL_LENGTH),a
+    ld bc,2000h
+    ld hl,STR_TRAFFIC_UPD
+    ld a,STR_TRAFFIC_UPD_END-STR_TRAFFIC_UPD
+    call EXPAND_LABEL
+
+    ld a,16
+    ld (HKDEFL_LENGTH),a
+    pop iy ;Client or server secret
+    pop de ;Client or server key
+    push iy
+    ld bc,2000h
+    ld hl,STR_KEY
+    ld a,STR_KEY_END-STR_KEY
+    call EXPAND_LABEL
+
+    ld a,12
+    ld (HKDEFL_LENGTH),a
+    pop iy ;Client or server secret
+    pop de ;Client or server IV
+    ld bc,2000h
+    ld hl,STR_IV
+    ld a,STR_IV_END-STR_IV
     ;jp EXPAND_LABEL
 
 
