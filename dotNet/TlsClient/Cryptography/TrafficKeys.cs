@@ -109,7 +109,7 @@ internal class TrafficKeys
     /// <returns>The computed key.</returns>
     public byte[] ComputeFinishedKey(bool ofServer)
     {
-        return ExpandLabel(ofServer ? serverSecret : clientSecret, "finished", empty, hashSize);
+        return Z80Runner.ComputeFinishedKey(ofServer);
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
     public HKDF.DERIVE_HS_KEYS
     public HKDF.DERIVE_AP_KEYS
+    public HKDF.COMPUTE_FINISHED_KEY
     public HKDF.CLIENT_SECRET
     public HKDF.SERVER_SECRET
     public HKDF.CLIENT_KEY
@@ -299,6 +300,10 @@ STR_IV:
     db "iv"
 STR_IV_END:
 
+STR_FINISHED:
+    db "finished"
+STR_FINISHED_END:
+
 ZEROKEY: ds 32
 DEVK_HASH_TMP: ds 32
 
@@ -333,6 +338,23 @@ CLIENT_KEY: ds 16
 SERVER_KEY: ds 16
 CLIENT_IV: ds 12
 SERVER_IV: ds 12
+
+
+;--- Generation of thr "finished" key
+;    Input: Cy = 0 for the client key, 1 for the server key
+;           DE = Destination address
+
+COMPUTE_FINISHED_KEY:
+    ld iy,CLIENT_SECRET
+    jr nc,COMPUTE_FINISHED_KEY_GO
+    ld iy,SERVER_SECRET
+COMPUTE_FINISHED_KEY_GO:
+    ld a,32
+    ld (HKDEFL_LENGTH),a
+    ld bc,2000h
+    ld hl,STR_FINISHED
+    ld a,STR_FINISHED_END-STR_FINISHED
+    ;jp EXPAND_LABEL
 
 
 ;--- HKDF-Expand-Label

@@ -151,6 +151,14 @@ internal class Z80Runner
         ];
     }
 
+    public static byte[] ComputeFinishedKey(bool ofServer)
+    {
+        Z80.CF = ofServer ? 1 : 0;
+        Z80.DE = unchecked((short)BUFFER_OUT);
+        Z80.Start(symbols["HKDF.COMPUTE_FINISHED_KEY"]);
+        return GetOutputBuffer(32);
+    }
+
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {
