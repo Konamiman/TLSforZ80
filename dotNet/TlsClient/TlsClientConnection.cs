@@ -624,7 +624,7 @@ public class TlsClientConnection
             sharedSecret = localP256Key.DeriveRawSecretAgreement(remoteEcdhKey.PublicKey);
 
             keys.ComputeHandshakeKeys(sharedSecret, Z80Runner.CalculateSHA256(transmittedHandshakeBytes.ToArray()));
-            encryption = new RecordEncryption(keys, tagSize: 16);
+            encryption = new RecordEncryption(keys);
             dataReceiver.Encryption = encryption;
         }
 

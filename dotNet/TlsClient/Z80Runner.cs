@@ -2,6 +2,8 @@
 using Konamiman.Nestor80.Linker;
 using Konamiman.PocketZ80;
 using System.Reflection;
+using System.Linq;
+using System.Net;
 
 namespace Konamiman.TLSforZ80.TlsClient;
 
@@ -25,6 +27,9 @@ internal class Z80Runner
             new SetCodeSegmentAddress() { Address = 0x100 }
         };
         var tempFiles = new List<(string, FileStream)>();
+
+        //We need aes.asm to be assembled first
+        files = files.OrderBy(x => Path.GetFileNameWithoutExtension(x) == "aes" ? "a" : Path.GetFileNameWithoutExtension(x)).ToArray();
 
         foreach(var file in files) {
             var assemblyResult = AssemblySourceProcessor.Assemble(File.ReadAllText(file), new AssemblyConfiguration() {
@@ -135,10 +140,10 @@ internal class Z80Runner
         if(sharedSecret != null) {
             Z80.IX = unchecked((short)(BUFFER_IN + handshakeHash.Length));
             SetInputBuffer(sharedSecret, BUFFER_IN + handshakeHash.Length);
-            Z80.Start(symbols["HKDF.DERIVE_HS_KEYS"]);
+            Run("HKDF.DERIVE_HS_KEYS");
         }
         else {
-            Z80.Start(symbols["HKDF.DERIVE_AP_KEYS"]);
+            Run("HKDF.DERIVE_AP_KEYS");
         }
 
         return [
@@ -153,20 +158,85 @@ internal class Z80Runner
     {
         Z80.CF = ofServer ? 1 : 0;
         Z80.DE = unchecked((short)BUFFER_OUT);
-        Z80.Start(symbols["HKDF.COMPUTE_FINISHED_KEY"]);
+        Run("HKDF.COMPUTE_FINISHED_KEY");
         return GetOutputBuffer(32);
     }
 
     public static byte[][] UpdateTrafficKey(bool ofServer)
     {
         Z80.CF = ofServer ? 1 : 0;
-        Z80.Start(symbols["HKDF.UPDATE_TRAFFIC_KEY"]);
+        Run("HKDF.UPDATE_TRAFFIC_KEY");
         return ofServer ? [
             GetOutputBuffer(16, symbols["HKDF.SERVER_KEY"]),
             GetOutputBuffer(12, symbols["HKDF.SERVER_IV"])
         ] : [
             GetOutputBuffer(16, symbols["HKDF.CLIENT_KEY"]),
             GetOutputBuffer(12, symbols["HKDF.CLIENT_IV"])
+        ];
+    }
+
+    public static byte[][] AesGcmEncrypt(byte[] clientKey, byte[] clientNonce, byte[] contentToEncrypt, byte[] additionalData)
+    {
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.DE = unchecked((short)(BUFFER_IN+16));
+        Z80.BC = unchecked((short)(BUFFER_IN+16+12));
+        SetInputBuffer(clientKey);
+        SetInputBuffer(clientNonce, BUFFER_IN+16);
+        SetInputBuffer(additionalData, BUFFER_IN + 16+12);
+        Run("AES_GCM.INIT");
+
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.DE = unchecked((short)BUFFER_IN); //Encrypt in-place
+        Z80.BC = (short)contentToEncrypt.Length;
+        SetInputBuffer(contentToEncrypt);
+        Run("AES_GCM.ENCRYPT");
+
+        Z80.HL = unchecked((short)(BUFFER_OUT-16));
+        Run("AES_GCM.FINISH");
+
+        return [
+            GetOutputBuffer(contentToEncrypt.Length, BUFFER_IN),
+            GetOutputBuffer(16, BUFFER_OUT-16)
+        ];
+    }
+
+    public static byte[][] AesGcmDecrypt(byte[] serverKey, byte[] serverNonce, byte[] cipherText, byte[] additionalData)
+    {
+        // Decrypt
+
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.DE = unchecked((short)(BUFFER_IN + 16));
+        Z80.BC = unchecked((short)(BUFFER_IN + 16 + 12));
+        SetInputBuffer(serverKey);
+        SetInputBuffer(serverNonce, BUFFER_IN + 16);
+        SetInputBuffer(additionalData, BUFFER_IN + 16 + 12);
+        Run("AES_GCM.INIT");
+
+        Z80.HL = unchecked((short)(BUFFER_IN + 16 + 12 + 5));
+        Z80.DE = unchecked((short)BUFFER_OUT);
+        Z80.BC = (short)cipherText.Length;
+        SetInputBuffer(cipherText, BUFFER_IN + 16 + 12 + 5);
+        Run("AES_GCM.DECRYPT");
+
+        // Calculate auth tag
+
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.DE = unchecked((short)(BUFFER_IN + 16));
+        Z80.BC = unchecked((short)(BUFFER_IN + 16 + 12));
+        Run("AES_GCM.INIT");
+
+        Z80.IX = unchecked((short)(BUFFER_IN + 16 + 12 + 5));
+        Z80.BC = (short)cipherText.Length;
+        Run("AES_GCM.AUTHTAG");
+
+        Z80.HL = unchecked((short)(BUFFER_IN - 16));
+        Run("AES_GCM.FINISH");
+
+        // Return data
+
+        return [
+            GetOutputBuffer(cipherText.Length, BUFFER_OUT),
+            GetOutputBuffer(16, BUFFER_IN-16)
         ];
     }
 

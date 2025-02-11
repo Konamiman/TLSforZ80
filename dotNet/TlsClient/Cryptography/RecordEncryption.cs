@@ -1,7 +1,5 @@
 ﻿using Konamiman.TlsForZ80.TlsClient.Enums;
-using System;
-using System.Linq;
-using System.Security.Cryptography;
+using Konamiman.TLSforZ80.TlsClient;
 
 namespace Konamiman.TlsForZ80.TlsClient.Cryptography;
 
@@ -19,16 +17,11 @@ internal class RecordEncryption
     byte[] serverKey;
     byte[] clientIv;
     byte[] serverIv;
-    readonly int ivSize;
-    readonly int tagSize;
-    AesGcm encryptor;
-    AesGcm decryptor;
+    const int ivSize = 12;
+    const int tagSize = 16;
 
-    public RecordEncryption(TrafficKeys keys, int tagSize)
+    public RecordEncryption(TrafficKeys keys)
     {
-        this.ivSize = keys.ClientIv.Length;
-        this.tagSize = tagSize;
-
         keys.KeysGenerated += OnKeysGenerated;
         OnKeysGenerated(keys, true);
         OnKeysGenerated(keys, false);
@@ -66,15 +59,10 @@ internal class RecordEncryption
             3, 3,
             ..encryptedLength.ToBigEndianUint16Bytes()
         ];
-        var encryptedContent = new byte[contentToEncrypt.Length];
-        var tag = new byte[tagSize];
 
-        try {
-            encryptor.Encrypt(clientNonce, contentToEncrypt, encryptedContent, tag, additionalData);
-        }
-        catch(Exception ex) {
-            throw new ProtocolError(AlertCode.internalError, $"Error when encrypting data: ({ex.GetType().Name}) {ex.Message}");
-        }
+        var result = Z80Runner.AesGcmEncrypt(clientKey, clientNonce, contentToEncrypt, additionalData);
+        var encryptedContent = result[0];
+        var tag = result[1];
 
         IncreaseSequenceNumber(clientSequenceNumber, clientNonce, clientIv);
         return encryptedContent.Concat(tag).ToArray();
@@ -99,13 +87,13 @@ internal class RecordEncryption
         var innerDataLength = encryptedLength.Value - tagSize;
         var tag = encryptedContent.Skip(innerDataLength).Take(tagSize).ToArray();
         var cipherText = encryptedContent.Take(innerDataLength).ToArray();
-        var decryptedContent = new byte[innerDataLength];
 
-        try {
-            decryptor.Decrypt(serverNonce, cipherText, tag, decryptedContent, additionalData);
-        }
-        catch(Exception ex) {
-            throw new ProtocolError(AlertCode.badRecordMac, $"Error when decrypting data: ({ex.GetType().Name}) {ex.Message}");
+        var result = Z80Runner.AesGcmDecrypt(serverKey, serverNonce, cipherText, additionalData);
+        var decryptedContent = result[0];
+        var calculatedTag = result[1];
+
+        if(!calculatedTag.SequenceEqual(tag)) {
+            throw new ProtocolError(AlertCode.badRecordMac, $"Error when decrypting data: mismatching tag");
         }
 
         /*
@@ -148,14 +136,12 @@ internal class RecordEncryption
             serverIv = keys.ServerIv;
             serverSequenceNumber = Enumerable.Repeat<byte>(0, ivSize).ToArray();
             serverNonce = keys.ServerIv.ToArray();
-            decryptor = new AesGcm(serverKey, tagSize);
         }
         else {
             clientKey = keys.ClientKey;
             clientIv = keys.ClientIv;
             clientSequenceNumber = Enumerable.Repeat<byte>(0, ivSize).ToArray();
             clientNonce = keys.ClientIv.ToArray();
-            encryptor = new AesGcm(clientKey, tagSize);
         }
     }
 }
