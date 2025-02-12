@@ -126,6 +126,10 @@ internal class RecordEncryption
         }
 
         nonce[sequenceIndex] = (byte)(sequenceNumber[sequenceIndex] ^ iv[sequenceIndex]);
+
+        var x = Z80Runner.IncreaseSequenceNumber(sequenceNumber == serverSequenceNumber);
+        var z80Nonce = x[0];
+        var z80Seq = x[1];
     }
 
     private void OnKeysGenerated(object? sender, bool forServer)
@@ -143,6 +147,8 @@ internal class RecordEncryption
             clientSequenceNumber = Enumerable.Repeat<byte>(0, ivSize).ToArray();
             clientNonce = keys.ClientIv.ToArray();
         }
+
+        Z80Runner.InitRecordEncryption(clientKey, clientIv, serverKey, serverIv );
     }
 }
 
