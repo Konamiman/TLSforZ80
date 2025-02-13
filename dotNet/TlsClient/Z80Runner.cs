@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Security.AccessControl;
 using Konamiman.TlsForZ80.TlsClient.Cryptography;
+using Konamiman.TlsForZ80.TlsClient.Enums;
 
 namespace Konamiman.TLSforZ80.TlsClient;
 
@@ -262,13 +263,26 @@ internal class Z80Runner
 
     public static byte[][] IncreaseSequenceNumber(bool forServer)
     {
-        Z80.IX = unchecked((short)symbols[forServer ? "RECORD_ENCRYPTION.CLIENT_NONCE" : "RECORD_ENCRYPTION.SERVER_NONCE"]);
+        Z80.IX = unchecked((short)(symbols[forServer ? "RECORD_ENCRYPTION.SERVER_NONCE" : "RECORD_ENCRYPTION.CLIENT_NONCE"]+11));
         Run("RECORD_ENCRYPTION.INC_SEQ");
 
         return [
-            GetOutputBuffer(12, symbols[forServer ? "RECORD_ENCRYPTION.CLIENT_NONCE" : "RECORD_ENCRYPTION.SERVER_NONCE"]),
-            GetOutputBuffer(12, symbols[forServer ? "RECORD_ENCRYPTION.CLIENT_SEQ" : "RECORD_ENCRYPTION.SERVER_SEQ"]),
+            GetOutputBuffer(12, symbols[forServer ? "RECORD_ENCRYPTION.SERVER_NONCE" : "RECORD_ENCRYPTION.CLIENT_NONCE"]),
+            GetOutputBuffer(12, symbols[forServer ? "RECORD_ENCRYPTION.SERVER_SEQUENCE" : "RECORD_ENCRYPTION.CLIENT_SEQUENCE"]),
         ];
+    }
+
+    public static byte[] Encrypt(byte contentType, byte[] content)
+    {
+        Z80.A = contentType;
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.BC = (short)content.Length;
+        Z80.DE = unchecked((short)BUFFER_OUT);
+        SetInputBuffer(content, BUFFER_IN);
+
+        Run("RECORD_ENCRYPTION.ENCRYPT");
+
+        return GetOutputBuffer(Z80.BC);
     }
 
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)

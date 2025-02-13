@@ -2,9 +2,9 @@
     public RECORD_ENCRYPTION.ENCRYPT
     public RECORD_ENCRYPTION.DECRYPT
     public RECORD_ENCRYPTION.CLIENT_NONCE ;Temp!
-    public RECORD_ENCRYPTION.CLIENT_SEQ   ;Temp!
+    public RECORD_ENCRYPTION.CLIENT_SEQUENCE   ;Temp!
     public RECORD_ENCRYPTION.SERVER_NONCE ;Temp!
-    public RECORD_ENCRYPTION.SERVER_SEQ   ;Temp!
+    public RECORD_ENCRYPTION.SERVER_SEQUENCE   ;Temp!
     public RECORD_ENCRYPTION.INC_SEQ      ;Temp!
 
     extrn AES_GCM.INIT
@@ -94,6 +94,12 @@ ENCRYPT:
     push bc
     push de
 
+    ; struct {
+    ;   opaque content[TLSPlaintext.length];
+    ;   ContentType type;
+    ;   uint8 zeros[length_of_padding]; -- nope, we don't support padding
+    ; } TLSInnerPlaintext;
+
     push hl
     push bc
     add hl,bc
@@ -166,7 +172,6 @@ INC_SEQ:
     ld (ix),a ;Corresponding byte of nonce
     pop af
     dec ix
-    dec iy
     jr z,.LOOP ;Here we assume that we'll never send more than 2^IV_SIZE records in the connection
 
     ret
@@ -182,6 +187,12 @@ SERVER_NONCE: ds IV_SIZE
 SERVER_SEQUENCE: ds IV_SIZE
 
 LENGTH: dw 0
+
+
+; additional_data = 
+;   TLSCiphertext.opaque_type ||
+;   TLSCiphertext.legacy_record_version ||
+;   TLSCiphertext.length
 
 ADDITIONAL_DATA:
     db APP_DATA_CONTENT_TYPE

@@ -29,43 +29,7 @@ internal class RecordEncryption
 
     public byte[] Encrypt(RecordContentType contentType, byte[] content, int index = 0, int size = -1, int paddingLength = 0)
     {
-        if(size == -1) {
-            size = content.Length;
-        }
-
-        /*
-          struct {
-            opaque content[TLSPlaintext.length];
-            ContentType type;
-            uint8 zeros[length_of_padding];
-          } TLSInnerPlaintext;
-        */
-
-        var contentToEncrypt = content
-            .Skip(index).Take(size)
-            .Concat([(byte)contentType])
-            .Concat(Enumerable.Repeat<byte>(0, paddingLength))
-            .ToArray();
-
-        /*
-         additional_data = TLSCiphertext.opaque_type ||
-           TLSCiphertext.legacy_record_version ||
-           TLSCiphertext.length
-         */
-
-        var encryptedLength = contentToEncrypt.Length + tagSize;
-        byte[] additionalData = [
-            (byte)RecordContentType.ApplicationData,
-            3, 3,
-            ..encryptedLength.ToBigEndianUint16Bytes()
-        ];
-
-        var result = Z80Runner.AesGcmEncrypt(clientKey, clientNonce, contentToEncrypt, additionalData);
-        var encryptedContent = result[0];
-        var tag = result[1];
-
-        IncreaseSequenceNumber(clientSequenceNumber, clientNonce, clientIv);
-        return encryptedContent.Concat(tag).ToArray();
+        return Z80Runner.Encrypt((byte)contentType, content.Skip(index).Take(size == -1 ? content.Length : size).ToArray());
     }
 
     public (RecordContentType, int) Decrypt(byte[] encryptedContent, byte[] destination, int? encryptedLength = null)
