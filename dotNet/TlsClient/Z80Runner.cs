@@ -285,6 +285,18 @@ internal class Z80Runner
         return GetOutputBuffer(Z80.BC);
     }
 
+    public static (byte errorCode, byte[] decrypted, byte contentType, byte[] computedAuthTag) Decrypt(byte[] encryptedData)
+    {
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.BC = (short)encryptedData.Length;
+        Z80.DE = unchecked((short)BUFFER_OUT);
+        SetInputBuffer(encryptedData, BUFFER_IN);
+
+        Run("RECORD_ENCRYPTION.DECRYPT");
+
+        return (Z80.A, GetOutputBuffer(Z80.BC), Z80.D, GetOutputBuffer(16, symbols["RECORD_ENCRYPTION.AUTH_TAG"]));
+    }
+
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {

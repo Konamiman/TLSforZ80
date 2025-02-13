@@ -56,6 +56,8 @@ internal class RecordEncryption
         var decryptedContent = result[0];
         var calculatedTag = result[1];
 
+        var (z80Error, z80Decrypted, z80ContentType, z80AuthTag) = Z80Runner.Decrypt(encryptedContent.Take(encryptedLength.Value).ToArray());
+
         if(!calculatedTag.SequenceEqual(tag)) {
             throw new ProtocolError(AlertCode.badRecordMac, $"Error when decrypting data: mismatching tag");
         }

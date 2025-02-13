@@ -6,6 +6,7 @@
     public RECORD_ENCRYPTION.SERVER_NONCE ;Temp!
     public RECORD_ENCRYPTION.SERVER_SEQUENCE   ;Temp!
     public RECORD_ENCRYPTION.INC_SEQ      ;Temp!
+    public RECORD_ENCRYPTION.AUTH_TAG ;Temp!
 
     extrn AES_GCM.INIT
     extrn AES_GCM.ENCRYPT
@@ -154,6 +155,79 @@ ENCRYPT:
 ;            D  = Content type
 
 DECRYPT:
+    ld a,b
+    ld (ADDITIONAL_DATA.ENCRYPTED_LENGTH),a
+    ld a,c
+    ld (ADDITIONAL_DATA.ENCRYPTED_LENGTH+1),a
+
+    ;Decrypt
+
+    push de
+    push hl
+    push bc
+    ld hl,SERVER_KEY
+    ld de,SERVER_IV
+    ld bc,ADDITIONAL_DATA
+    call AES_GCM.INIT
+
+    pop hl
+    ld bc,TAG_SIZE
+    or a
+    sbc hl,bc
+    push hl
+    pop bc ;BC = Length of data minus the tag
+
+    pop hl
+    pop de
+    push bc
+    push hl
+    call AES_GCM.DECRYPT
+
+    ;Calculate auth tag
+
+    ld hl,SERVER_KEY
+    ld de,SERVER_IV
+    ld bc,ADDITIONAL_DATA
+    call AES_GCM.INIT
+
+    pop ix
+    pop bc
+    push bc
+    push ix
+    call AES_GCM.AUTHTAG
+
+    ld hl,AUTH_TAG
+    call AES_GCM.FINISH
+
+    ;Validate auth tag
+
+    pop hl
+    pop bc
+    push hl
+    push bc
+    add hl,bc   ;HL = Pointer to received auth tag
+    ld de,AUTH_TAG
+    ld b,16
+.CHECK:
+    ld a,(de)
+    cpi
+    jr nz,.BAD_TAG
+    inc de
+    djnz .CHECK
+
+    ;Search content type
+
+    ;WIP!
+
+    pop bc
+    pop hl
+    ld a,34
+    ld d,89
+.BAD_TAG:
+    pop bc
+    pop hl
+    ld a,1
+    ret
     ret
 
 
@@ -186,7 +260,7 @@ SERVER_IV: ds IV_SIZE
 SERVER_NONCE: ds IV_SIZE
 SERVER_SEQUENCE: ds IV_SIZE
 
-LENGTH: dw 0
+AUTH_TAG: ds 16
 
 
 ; additional_data = 
