@@ -1,12 +1,6 @@
     public RECORD_ENCRYPTION.INIT
     public RECORD_ENCRYPTION.ENCRYPT
     public RECORD_ENCRYPTION.DECRYPT
-    public RECORD_ENCRYPTION.CLIENT_NONCE ;Temp!
-    public RECORD_ENCRYPTION.CLIENT_SEQUENCE   ;Temp!
-    public RECORD_ENCRYPTION.SERVER_NONCE ;Temp!
-    public RECORD_ENCRYPTION.SERVER_SEQUENCE   ;Temp!
-    public RECORD_ENCRYPTION.INC_SEQ      ;Temp!
-    public RECORD_ENCRYPTION.AUTH_TAG ;Temp!
 
     extrn AES_GCM.INIT
     extrn AES_GCM.ENCRYPT
@@ -33,51 +27,32 @@ APP_DATA_CONTENT_TYPE: equ 23
 
 ;--- Initialize
 ;
-;    Input: HL = Pointer to client key
-;           DE = Pointer to client IV
-;           IX = Pointer to server key
-;           IY = Pointer to server IV
+;    Input: Cy = 0 for client, 1 for server
+;           HL = Pointer to key
+;           DE = Pointer to IV
+;    Assumes that KEY, IV, NONCE and SEQUENCE are consecutive
 
 INIT:
     push de
     ld de,CLIENT_KEY
-    ld bc,KEY_SIZE
-    ldir
-    pop hl
-    push hl
-    ld de,CLIENT_IV
-    ld bc,IV_SIZE
-    ldir
-    pop hl
-    ld de,CLIENT_NONCE
-    ld bc,IV_SIZE
-    ldir
-
-    push ix
-    pop hl
+    jr nc,.GO
     ld de,SERVER_KEY
+.GO:
     ld bc,KEY_SIZE
     ldir
-    push iy
     pop hl
     push hl
-    ld de,SERVER_IV
     ld bc,IV_SIZE
     ldir
     pop hl
-    ld de,SERVER_NONCE
     ld bc,IV_SIZE
     ldir
 
-    ld hl,CLIENT_SEQUENCE
-    ld de,CLIENT_SEQUENCE+1
-    ld bc,IV_SIZE-1
+    push de
+    pop hl
+    inc de
     ld (hl),0
-    ldir
-    ld hl,SERVER_SEQUENCE
-    ld de,SERVER_SEQUENCE+1
     ld bc,IV_SIZE-1
-    ld (hl),0
     ldir
 
     ret
@@ -117,7 +92,7 @@ ENCRYPT:
     ld (ADDITIONAL_DATA.ENCRYPTED_LENGTH+1),a
 
     ld hl,CLIENT_KEY
-    ld de,CLIENT_IV
+    ld de,CLIENT_NONCE
     ld bc,ADDITIONAL_DATA
     call AES_GCM.INIT
 
@@ -166,7 +141,7 @@ DECRYPT:
     push hl
     push bc
     ld hl,SERVER_KEY
-    ld de,SERVER_IV
+    ld de,SERVER_NONCE
     ld bc,ADDITIONAL_DATA
     call AES_GCM.INIT
 
@@ -179,6 +154,7 @@ DECRYPT:
 
     pop hl
     pop de
+    push de
     push bc
     push hl
     call AES_GCM.DECRYPT
@@ -186,7 +162,7 @@ DECRYPT:
     ;Calculate auth tag
 
     ld hl,SERVER_KEY
-    ld de,SERVER_IV
+    ld de,SERVER_NONCE
     ld bc,ADDITIONAL_DATA
     call AES_GCM.INIT
 
@@ -203,9 +179,8 @@ DECRYPT:
 
     pop hl
     pop bc
-    push hl
-    push bc
     add hl,bc   ;HL = Pointer to received auth tag
+    push bc
     ld de,AUTH_TAG
     ld b,16
 .CHECK:
@@ -215,26 +190,48 @@ DECRYPT:
     inc de
     djnz .CHECK
 
-    ;Search content type
-
-    ;WIP!
+    ;Search content type by skipping zeros starting at the end
 
     pop bc
-    pop hl
-    ld a,34
-    ld d,89
+    pop hl  ;Destination address
+    add hl,bc
+    dec hl  ;Now HL points to the last byte of the decrypted data
+
+.GET_CONTENT_TYPE:
+    ld a,(hl)
+    or a
+    jr nz,.CONTENT_TYPE_FOUND
+
+    dec bc
+    ld a,b
+    or c
+    ld a,2
+    ret z
+
+    dec hl
+    jr .GET_CONTENT_TYPE
+
+.CONTENT_TYPE_FOUND:
+    dec bc  ;Don't count content type byte for the decrypted content length
+    ld d,a
+
+    ld ix,SERVER_NONCE+IV_SIZE-1
+    call INC_SEQ
+
+    xor a
+    ret
+
 .BAD_TAG:
     pop bc
     pop hl
     ld a,1
-    ret
     ret
 
 
 ;--- Increase sequence number and update nonce
 ;    Input: IX = Pointer to last byte of CLIENT_NONCE or SERVER_NONCE
 ;
-;    Note: assumes that IV, NONCE and SEQUENCE are consecutive in memory.
+;    Note: assumes that IV, NONCE and SEQUENCE are consecutive in memory
 
 INC_SEQ:
 .LOOP:

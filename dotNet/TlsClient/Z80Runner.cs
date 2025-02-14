@@ -243,20 +243,13 @@ internal class Z80Runner
         ];
     }
 
-    public static void InitRecordEncryption(byte[] clientKey, byte[] clientIV, byte[] serverKey, byte[] serverIV)
+    public static void InitRecordEncryption(byte[] key, byte[] iv, bool forServer)
     {
-        clientKey ??= [];
-        clientIV ??= [];
-        serverKey ??= [];
-        serverIV ??= [];
         Z80.HL = unchecked((short)BUFFER_IN);
         Z80.DE = unchecked((short)(BUFFER_IN+16));
-        Z80.IX = unchecked((short)(BUFFER_IN + 16+12));
-        Z80.IY = unchecked((short)(BUFFER_IN + 16 + 12 + 16));
-        SetInputBuffer(clientKey, BUFFER_IN);
-        SetInputBuffer(clientIV, BUFFER_IN+16);
-        SetInputBuffer(serverKey, BUFFER_IN+16+12);
-        SetInputBuffer(serverIV, BUFFER_IN+16+12+16);
+        Z80.CF = forServer ? 1 : 0;
+        SetInputBuffer(key, BUFFER_IN);
+        SetInputBuffer(iv, BUFFER_IN+16);
 
         Run("RECORD_ENCRYPTION.INIT");
     }
@@ -285,7 +278,7 @@ internal class Z80Runner
         return GetOutputBuffer(Z80.BC);
     }
 
-    public static (byte errorCode, byte[] decrypted, byte contentType, byte[] computedAuthTag) Decrypt(byte[] encryptedData)
+    public static (byte errorCode, byte[] decrypted, byte contentType) Decrypt(byte[] encryptedData)
     {
         Z80.HL = unchecked((short)BUFFER_IN);
         Z80.BC = (short)encryptedData.Length;
@@ -294,7 +287,7 @@ internal class Z80Runner
 
         Run("RECORD_ENCRYPTION.DECRYPT");
 
-        return (Z80.A, GetOutputBuffer(Z80.BC), Z80.D, GetOutputBuffer(16, symbols["RECORD_ENCRYPTION.AUTH_TAG"]));
+        return (Z80.A, GetOutputBuffer(Z80.BC), Z80.D);
     }
 
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
