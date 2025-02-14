@@ -17,6 +17,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Z80", "Z80", "{36C1F52C-DA4
 	ProjectSection(SolutionItems) = preProject
 		..\z80\aes-gcm.asm = ..\z80\aes-gcm.asm
 		..\z80\aes.asm = ..\z80\aes.asm
+		..\z80\client_hello.asm = ..\z80\client_hello.asm
 		..\z80\fizzbuzz.asm = ..\z80\fizzbuzz.asm
 		..\z80\foobar.asm = ..\z80\foobar.asm
 		..\z80\hkdf.asm = ..\z80\hkdf.asm
