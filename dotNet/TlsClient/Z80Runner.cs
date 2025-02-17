@@ -2,11 +2,7 @@
 using Konamiman.Nestor80.Linker;
 using Konamiman.PocketZ80;
 using System.Reflection;
-using System.Linq;
-using System.Net;
-using System.Security.AccessControl;
-using Konamiman.TlsForZ80.TlsClient.Cryptography;
-using Konamiman.TlsForZ80.TlsClient.Enums;
+using System.Text;
 
 namespace Konamiman.TLSforZ80.TlsClient;
 
@@ -288,6 +284,18 @@ internal class Z80Runner
         Run("RECORD_ENCRYPTION.DECRYPT");
 
         return (Z80.A, GetOutputBuffer(Z80.BC), Z80.D);
+    }
+
+    public static byte[] GetClientHello(string serverName, byte[] publicKey)
+    {
+        var serverNameBytes = Encoding.ASCII.GetBytes(serverName);
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.B = (byte)serverNameBytes.Length;
+        Z80.DE = unchecked((short)(BUFFER_IN+128));
+        SetInputBuffer(serverNameBytes, BUFFER_IN);
+        SetInputBuffer(publicKey, BUFFER_IN+128);
+        Run("CLIENT_HELLO.INIT");
+        return GetOutputBuffer(Z80.BC, Z80.HL);
     }
 
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)

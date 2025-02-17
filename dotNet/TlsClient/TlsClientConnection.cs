@@ -560,7 +560,6 @@ public class TlsClientConnection
 
 
             var clientHello = new ClientHelloMessage() {
-                CipherSuites = [ CipherSuite.TLS_AES_128_GCM_SHA256 ],
                 P256PublicKey = localP256Key.ExportSubjectPublicKeyInfo().Skip(27).ToArray(),
                 ServerName = hostName
             };

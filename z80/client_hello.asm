@@ -8,9 +8,11 @@ RANDOM_SIZE: equ 32
 PUBLIC_KEY_SIZE: equ 64
 
 ;--- Init
-;    Input: HL = Address of "server name"
-;           B  = Length of "server name" (max 128 bytes!)
-;           DE = Address of public key
+;    Input:  HL = Address of "server name"
+;            B  = Length of "server name" (max 128 bytes!)
+;            DE = Address of public key
+;    Output: HL = Address of CLIENT_HELLO.MESSAGE
+;            BC = Value of CLIENT_HELLO.SIZE
 
 INIT:
     push hl
@@ -84,6 +86,10 @@ INIT:
     ld hl,EXTENSIONS_END-MESSAGE
     add hl,bc
     ld (SIZE),hl
+
+    push hl
+    pop bc
+    ld hl,MESSAGE
 
     ret
 
