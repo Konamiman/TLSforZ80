@@ -1,6 +1,7 @@
     public CLIENT_HELLO.INIT
     public CLIENT_HELLO.MESSAGE
     public CLIENT_HELLO.SIZE
+    public CLIENT_HELLO.SESSION_ID
 
     module CLIENT_HELLO
 

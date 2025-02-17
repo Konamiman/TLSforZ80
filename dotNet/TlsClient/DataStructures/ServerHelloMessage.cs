@@ -11,7 +11,7 @@ namespace Konamiman.TlsForZ80.TlsClient.DataStructures
     /// </summary>
     internal class ServerHelloMessage
     {
-        public byte[] Random { get; private set; }
+        private byte[] Random { get; set; }
 
         public CipherSuite CipherSuite { get; private set; }
 
@@ -20,8 +20,6 @@ namespace Konamiman.TlsForZ80.TlsClient.DataStructures
         public bool IsHelloRetryRequest { get; private set; }
 
         public byte[] PublicKey { get; private set; } = null;
-
-        public byte[] Cookie { get; private set; } = null;
 
         private static readonly byte[] HelloRetryRequestRandom = {
             0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91,
@@ -121,16 +119,6 @@ namespace Konamiman.TlsForZ80.TlsClient.DataStructures
 
                         index += keyLength;
                         dataLength -= keyLength;
-                        break;
-                    case HandshakeExtensionType.Cookie:
-                        VerifyDataLength(dataLength, 2); // len(cookie)
-                        var cookieLength = data.ExtractBigEndianUint16(index);
-                        index += 2;
-                        dataLength += 2;
-                        VerifyDataLength(dataLength, cookieLength);
-                        Cookie = data.Skip(index).Take(cookieLength).ToArray();
-                        index += cookieLength;
-                        dataLength -= cookieLength;
                         break;
                     default:
                         index += extensionLength;
