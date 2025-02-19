@@ -298,6 +298,15 @@ internal class Z80Runner
         return GetOutputBuffer(Z80.BC, Z80.HL);
     }
 
+    public static (byte, byte[]) ParseServerHello(byte[] message)
+    {
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.BC = (short)message.Length;
+        SetInputBuffer(message, BUFFER_IN);
+        Run("SERVER_HELLO.PARSE");
+        return (Z80.A, Z80.A == 0 ? GetOutputBuffer(64, Z80.HL) : null);
+    }
+
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {

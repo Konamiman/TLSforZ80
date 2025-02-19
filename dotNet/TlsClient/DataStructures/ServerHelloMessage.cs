@@ -1,4 +1,5 @@
 ﻿using Konamiman.TlsForZ80.TlsClient.Enums;
+using Konamiman.TLSforZ80.TlsClient;
 using System;
 using System.Linq;
 
@@ -40,6 +41,8 @@ namespace Konamiman.TlsForZ80.TlsClient.DataStructures
 
         private ServerHelloMessage(byte[] data)
         {
+            var z80Result = Z80Runner.ParseServerHello(data);
+
             var index = 0;
             var remainingLength = data.Length;
 
