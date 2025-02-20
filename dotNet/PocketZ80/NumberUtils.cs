@@ -72,7 +72,7 @@
         /// <returns>Retrieved bit value</returns>
         public static int GetBit(this byte value, int bitPosition)
         {
-            return (value & bitMasks[bitPosition]); // == 0 ? 0 : 1;
+            return (value & bitMasks[bitPosition]) == 0 ? 0 : 1;
         }
 
         /// <summary>

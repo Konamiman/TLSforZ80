@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -35,6 +36,8 @@ namespace Konamiman.PocketZ80
 
         private void InstructionExecutionLoop()
         {
+            var watcher = new Stopwatch();
+            watcher.Start();
             while (SP < 0)
             {
                 switch(PC) {
@@ -43,6 +46,11 @@ namespace Konamiman.PocketZ80
                 }
 
                 Execute(Memory[PC++]);
+
+                if(watcher.ElapsedMilliseconds > 3000) {
+                    watcher.Stop();
+                    throw new Exception("Z80 code took too long to execute");
+                }
             }
         }
 

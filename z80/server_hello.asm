@@ -11,13 +11,15 @@
 ERR_INVALID_FORMAT: equ 1
 ERR_HELLO_RETRY: equ 2
 ERR_NO_TLS13: equ 3
-ERR_NO_P256: equ 4
+ERR_BAD_CIPHER_SUITE: equ 4
 ERR_NO_KEYSHARE: equ 5
 ERR_BAD_SESSIONID: equ 6
 ERR_BAD_COMPRESSION: equ 7
 
 EXT_KEY_SHARE: equ 51
 EXT_SUPPORTED_VERSIONS: equ 43
+
+GROUP_ID_P256: equ 23
 
 
     ;--- Parse a received Server Hello message
@@ -27,11 +29,11 @@ EXT_SUPPORTED_VERSIONS: equ 43
     ;                1: Invalid format
     ;                2: HelloRetryRequest received
     ;                3: Not TLS 1.3
-    ;                4: CipherSuite is not P256
-    ;                5: No KeyShare extension received
-    ;                6: Mismatched session id echo
+    ;                4: CipherSuite is not TLS_AES_128_GCM_SHA256
+    ;                5: No KeyShare extension for the cipher suite received
+    ;                6: Mismatching session id echo (not the same as CLIENT_HELLO.SESSION_ID)
     ;                7: Bad legacy compression method
-    ;            HL = Address of public key
+    ;            HL = Address of public key (64 bytes)
 PARSE:
     xor a
     ld (FLAGS),a
@@ -71,7 +73,7 @@ PARSE:
     ret nz
     inc hl
 
-    ld b,a      ;Session ID is the same we sent?
+    ld b,32      ;Session ID is the same we sent?
     ld de,CLIENT_HELLO.SESSION_ID
     ld c,ERR_BAD_SESSIONID
 .SESSION_ID_CHECK_LOOP:
@@ -83,7 +85,16 @@ PARSE:
     inc de
     djnz .SESSION_ID_CHECK_LOOP
 
-    ;TODO: Cipher Suite
+    ld a,(hl)   ;Cipher suite is TLS_AES_128_GCM_SHA256?
+    cp 13h
+    ld a,ERR_BAD_CIPHER_SUITE
+    ret nz
+    inc hl
+    ld a,(hl)
+    dec a ;cp 1
+    ld a,ERR_BAD_CIPHER_SUITE
+    ret nz
+    inc hl
 
     ld a,(hl)   ;Legacy compression method is 0?
     or a
@@ -129,7 +140,24 @@ PARSE:
 
     ;* Key share extension
 
-    ;WIP...
+.EXTENSIONS_KEY_SHARE:
+    ld a,(hl)
+    or a
+    jr nz,.EXTENSIONS_NEXT
+    inc hl
+    ld a,(hl)
+    dec hl
+    cp GROUP_ID_P256
+    jr nz,.EXTENSIONS_NEXT
+
+    push hl
+    ld de,5 ;Skip extension type, extension length, and legacy "4" byte
+    add hl,de
+    ld de,PUBLIC_KEY
+    ld bc,64
+    ldir
+    pop hl
+
     ld a,(FLAGS)
     or 2
     ld (FLAGS),a
@@ -138,18 +166,30 @@ PARSE:
     ;* Supported versions extension
 
 .EXTENSION_SUPPORTED_VERSIONS:
-    ;WIP...
+    ;Expected value is 0x0304 (TLS 1.3)
+    ld a,(hl)
+    cp 3
+    jr nz,POP_NOTLS13
+    inc hl
+    ld a,(hl)
+    cp 4
+    jr nz,POP_NOTLS13
+
+    dec hl
     ld a,(FLAGS)
     or 1
     ld (FLAGS),a
 
 .EXTENSIONS_NEXT:
     pop de    ;DE = Remaining extensions length
-    add hl,de ;HL = Pointer to next extension
+    add hl,bc ;HL = Pointer to next extension
     
     ex de,hl  ;HL = Remaining extensions length, DE = Pointer to next extension
     or a
     sbc hl,bc ;HL = Updated remaining extensions length
+    ld bc,4
+    or a
+    sbc hl,bc ;Substract extension type and length too
     push hl
     pop bc
     ex de,hl  ;HL = Pointer to next extension
@@ -170,6 +210,8 @@ PARSE:
     ld hl,PUBLIC_KEY
     ret
 
+POP_NOTLS13:
+    pop bc
 NO_TLS13:
     ld a,ERR_NO_TLS13
     ret
@@ -181,7 +223,7 @@ HELLO_RETRY_RANDOM:
     db 0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91
     db 0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E, 0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C
 
-PUBLIC_KEY: ds 64,34
+PUBLIC_KEY: ds 64
 
 FLAGS: db 0 ;Bit 0: TLS 1.3 found, bit 1: key share found
     endmod
