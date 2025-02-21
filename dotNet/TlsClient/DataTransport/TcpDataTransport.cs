@@ -1,6 +1,5 @@
-﻿using System.Linq;
+﻿using Konamiman.TLSforZ80.PocketZ80;
 using System.Net.NetworkInformation;
-using System.Net.Sockets;
 
 namespace Konamiman.TlsForZ80.TlsClient.DataTransport;
 
@@ -9,21 +8,21 @@ namespace Konamiman.TlsForZ80.TlsClient.DataTransport;
 /// </summary>
 public class TcpDataTransport : IDataTransport
 {
-    readonly TcpClient client;
+    readonly TcpConnection client;
     readonly string host;
     readonly int port;
     bool locallyClosed = false;
 
     public TcpDataTransport(string host, int port)
     {
-        client = new TcpClient(AddressFamily.InterNetwork);
+        client = new TcpConnection(host, port);
         this.host = host;
         this.port = port;
     }
 
     public void Connect()
     {
-        client.Connect(host, port);
+        client.Connect();
     }
 
     public void Close()
@@ -34,7 +33,7 @@ public class TcpDataTransport : IDataTransport
 
     public bool HasDataToReceive()
     {
-        return client.Available > 0;
+        return client.CanReceive() && client.AvailableCount > 0;
     }
 
     public bool IsLocallyClosed()
@@ -44,20 +43,19 @@ public class TcpDataTransport : IDataTransport
 
     public bool IsRemotelyClosed()
     {
-        var state = GetConnectionState();
-        return state is TcpState.Closed or TcpState.CloseWait or null;
+        var state = client.GetState();
+        return state is TcpState.Closed or TcpState.CloseWait;
     }
 
     public int Receive(byte[] destination, int index, int length)
     {
-        try
-        {
-            return HasDataToReceive() ? client.GetStream().Read(destination, index, length) : 0;
-        }
-        catch
-        {
+        if(!HasDataToReceive()) {
             return 0;
         }
+
+        var data = client.Receive(length);
+        Array.Copy(data, 0, destination, index, data.Length);
+        return data.Length;
     }
 
     public bool Send(byte[] data, int index = 0, int? length = null)
@@ -71,7 +69,7 @@ public class TcpDataTransport : IDataTransport
 
         try
         {
-            client.GetStream().Write(data, index, length.Value);
+            client.Send(data.Skip(index).Take(length.Value).ToArray(), true);
             return true;
         }
         catch
@@ -82,12 +80,6 @@ public class TcpDataTransport : IDataTransport
 
     public TcpState? GetConnectionState()
     {
-        var info = IPGlobalProperties.GetIPGlobalProperties()
-          .GetActiveTcpConnections()
-          .SingleOrDefault(x => x.LocalEndPoint.Equals(client.Client?.LocalEndPoint)
-                             && x.RemoteEndPoint.Equals(client.Client?.RemoteEndPoint)
-          );
-
-        return info?.State;
+        return client.GetState();
     }
 }

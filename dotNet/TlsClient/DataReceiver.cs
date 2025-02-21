@@ -66,15 +66,13 @@ internal class DataReceiver
     /// </summary>
     public HandshakeType HandshakeType { get; private set; } = HandshakeType.None;
 
-    bool receivingHeader = true;
-
-    byte[] recordData = new byte[16384];
+    readonly byte[] recordData = new byte[16384];
 
     int totalSize = 5;
 
     int receivedSize = 0;
 
-    byte[]? nextHandshakeData;
+    byte[] nextHandshakeData;
 
     byte[] handshakeData;
 
@@ -113,7 +111,6 @@ internal class DataReceiver
 
         if(RecordType is RecordContentType.None) {
             // We have a full record header
-            receivingHeader = false;
 
             RecordType = (RecordContentType)recordData[0];
             //var legacyVersion = recordData.ExtractBigEndianUint16(1);
@@ -196,6 +193,5 @@ internal class DataReceiver
         RecordType = RecordContentType.None;
         receivedSize = 0;
         totalSize = 5;
-        receivingHeader = true;
     }
 }

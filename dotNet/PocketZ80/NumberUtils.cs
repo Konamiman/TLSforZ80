@@ -94,5 +94,45 @@
                 return (byte)(number & negBitMasks[bitPosition]);
             }
         }
+
+        /// <summary>
+        /// Converts a number to short by substracting 65536 when the number is 32768 or higher.
+        /// </summary>
+        /// <param name="value">Number to convert</param>
+        /// <returns>Converted number</returns>
+        public static short ToShort(this int value)
+        {
+            return (short)(ushort)value;
+        }
+
+        /// <summary>
+        /// Converts a number to short by substracting 65536 when the number is 32768 or higher.
+        /// </summary>
+        /// <param name="value">Number to convert</param>
+        /// <returns>Converted number</returns>
+        public static short ToShort(this ushort value)
+        {
+            return (short)value;
+        }
+
+        /// <summary>
+        /// Converts a number to ushort by adding 65536 when the number is negative.
+        /// </summary>
+        /// <param name="value">Number to convert</param>
+        /// <returns>Converted number</returns>
+        public static ushort ToUShort(this int value)
+        {
+            return (ushort)value;
+        }
+
+        /// <summary>
+        /// Converts a number to ushort by adding 65536 when the number is negative.
+        /// </summary>
+        /// <param name="value">Number to convert</param>
+        /// <returns>Converted number</returns>
+        public static ushort ToUShort(this short value)
+        {
+            return (ushort)value;
+        }
     }
 }

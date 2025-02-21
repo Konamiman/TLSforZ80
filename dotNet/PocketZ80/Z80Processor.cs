@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Konamiman.TLSforZ80.PocketZ80;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -20,6 +21,16 @@ namespace Konamiman.PocketZ80
     public partial class Z80Processor
     {
         public byte[] Memory { get; private set; } = new byte[65536];
+
+        private TcpIpUnapi tcpIpUnapi;
+
+        public TcpConnection TcpConnection 
+        { 
+            set
+            {
+                tcpIpUnapi = new TcpIpUnapi(this, value);
+            }
+        }
 
         public Z80Processor()
         {
@@ -43,6 +54,9 @@ namespace Konamiman.PocketZ80
                 switch(PC) {
                     case 0x0000:
                         return;
+                    case 0x0003:
+                        tcpIpUnapi.HandleEntryPointCall();
+                        return;
                 }
 
                 Execute(Memory[PC++]);
@@ -63,7 +77,7 @@ namespace Konamiman.PocketZ80
             unchecked { SP = (short)0xFFFF; }
         }
 
-        private void ExecuteRet()
+        public void ExecuteRet()
         {
             var sp = (ushort)SP;
             var newPC = NumberUtils.CreateShort(Memory[sp], Memory[(ushort)(sp + 1)]);

@@ -74,6 +74,8 @@ internal class Z80Runner
         var outputBytes = File.ReadAllBytes(outputFile);
         Array.Copy(outputBytes, 0, Z80.Memory, 0x100, outputBytes.Length);
 
+        var totalSize = linkingResult.ProgramsData.Sum(d => d.CodeSegmentSize);
+
         foreach(var programInfo in linkingResult.ProgramsData) {
             foreach(var symbol in programInfo.PublicSymbols) {
                 symbols.Add(symbol.Key, symbol.Value);
