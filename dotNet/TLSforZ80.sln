@@ -25,6 +25,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Z80", "Z80", "{36C1F52C-DA4
 		..\z80\record_encryption.asm = ..\z80\record_encryption.asm
 		..\z80\server_hello.asm = ..\z80\server_hello.asm
 		..\z80\sha256.asm = ..\z80\sha256.asm
+		..\z80\unapi.asm = ..\z80\unapi.asm
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TlsConsole", "TlsConsole\TlsConsole.csproj", "{02DAA789-AF1C-4F2D-A59F-5BD36F0294CF}"

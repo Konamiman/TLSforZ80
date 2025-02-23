@@ -32,12 +32,6 @@ public interface IDataTransport
     bool HasDataToReceive();
 
     /// <summary>
-    /// Indicates if the output stream is closed, meaning that no further data can be sent.
-    /// </summary>
-    /// <returns></returns>
-    bool IsLocallyClosed();
-
-    /// <summary>
     /// Indicates if the input stream is closed, meaning that no further data can be received.
     /// </summary>
     /// <returns></returns>

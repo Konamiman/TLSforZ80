@@ -1,8 +1,5 @@
 ﻿using Konamiman.TLSforZ80.PocketZ80;
-using System;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 
 namespace Konamiman.PocketZ80
 {
@@ -56,10 +53,11 @@ namespace Konamiman.PocketZ80
                         return;
                     case 0x0003:
                         tcpIpUnapi.HandleEntryPointCall();
-                        return;
+                        break;
+                    default:
+                        Execute(Memory[PC++]);
+                        break;
                 }
-
-                Execute(Memory[PC++]);
 
                 if(watcher.ElapsedMilliseconds > 3000) {
                     watcher.Stop();

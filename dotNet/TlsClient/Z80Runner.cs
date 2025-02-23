@@ -1,6 +1,7 @@
 ﻿using Konamiman.Nestor80.Assembler;
 using Konamiman.Nestor80.Linker;
 using Konamiman.PocketZ80;
+using Konamiman.TLSforZ80.PocketZ80;
 using System.Reflection;
 using System.Text;
 
@@ -307,6 +308,39 @@ internal class Z80Runner
         SetInputBuffer(message, BUFFER_IN);
         Run("SERVER_HELLO.PARSE");
         return (Z80.A, Z80.A == 0 ? GetOutputBuffer(64, Z80.HL) : null);
+    }
+
+    public static TcpConnection TcpConnection
+    {
+        set
+        {
+            Z80.TcpConnection = value;
+        }
+    }
+
+    public static void InitTcp()
+    {
+        SetInputBuffer([0xC3, 3, 0]);
+        Z80.A = 1;
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Run("DATA_TRANSPORT.INIT");
+    }
+
+    public static bool HasTcpData()
+    {
+        Run("DATA_TRANSPORT.HAS_IN_DATA");
+        return Z80.CF == 1;
+    }
+
+    public static bool TcpIsClosed()
+    {
+        Run("DATA_TRANSPORT.IS_REMOTELY_CLOSED");
+        return Z80.CF == 1;
+    }
+
+    public static void TcpClose()
+    {
+        Run("DATA_TRANSPORT.CLOSE");
     }
 
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)

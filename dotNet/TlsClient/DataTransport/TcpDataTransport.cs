@@ -1,4 +1,5 @@
 ﻿using Konamiman.TLSforZ80.PocketZ80;
+using Konamiman.TLSforZ80.TlsClient;
 using System.Net.NetworkInformation;
 
 namespace Konamiman.TlsForZ80.TlsClient.DataTransport;
@@ -25,26 +26,25 @@ public class TcpDataTransport : IDataTransport
         client.Connect();
     }
 
+    public void BindConnectionToZ80()
+    {
+        Z80Runner.TcpConnection = client;
+        Z80Runner.InitTcp();
+    }
+
     public void Close()
     {
-        client.Close();
-        locallyClosed = true;
+        Z80Runner.TcpClose();
     }
 
     public bool HasDataToReceive()
     {
-        return client.CanReceive() && client.AvailableCount > 0;
-    }
-
-    public bool IsLocallyClosed()
-    {
-        return locallyClosed;
+        return Z80Runner.HasTcpData();
     }
 
     public bool IsRemotelyClosed()
     {
-        var state = client.GetState();
-        return state is TcpState.Closed or TcpState.CloseWait;
+        return Z80Runner.TcpIsClosed();
     }
 
     public int Receive(byte[] destination, int index, int length)

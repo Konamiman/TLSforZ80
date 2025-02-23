@@ -26,6 +26,7 @@ public class TcpConnection
     public void Connect()
     {
         tcpClient.Connect(host, port);
+        RemoteEndpoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint;
     }
 
     public void Close()

@@ -5,7 +5,6 @@ using Konamiman.TlsForZ80.TlsClient.Enums;
 using Konamiman.TLSforZ80.TlsClient;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace Konamiman.TlsForZ80.TlsClient;
 

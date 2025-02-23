@@ -49,6 +49,7 @@ class Program
         }
 
         var connection = new TlsClientConnection(tcpTransport, null, host);
+        tcpTransport.BindConnectionToZ80();
 
         while(connection.State < ConnectionState.Established) ;
 

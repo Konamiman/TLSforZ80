@@ -7,14 +7,7 @@ namespace Konamiman.TLSforZ80.PocketZ80;
 
 internal partial class TcpIpUnapi
 {
-    private const int MaxTcpConnections = 1;
-
-    private static TcpIpUnapi Instance;
-
     private readonly NetworkInterface networkInterface;
-    private readonly UnicastIPAddressInformation ipInfo;
-    private readonly bool dnsServersAvailable;
-    private readonly int mtu;
     private readonly Z80Processor cpu;
 
 
@@ -34,16 +27,12 @@ internal partial class TcpIpUnapi
         networkInterface =
             networkInterfaces.FirstOrDefault(i => hasIpv4Address(i) && i.NetworkInterfaceType != NetworkInterfaceType.Loopback)
             ?? networkInterfaces.FirstOrDefault(i => hasIpv4Address(i));
-        ipInfo = networkInterface?.GetIPProperties().UnicastAddresses.First(a => IsIPv4(a.Address));
 
         if(networkInterface == null) {
             throw new Exception(ipAddress == "" ?
                 "No IPv4 network interfaces available" :
                 $"There is no network interface with the IP address {ipAddress}");
         }
-
-        dnsServersAvailable = networkInterface.GetIPProperties().DnsAddresses.Any();
-        mtu = (short)Math.Min(32767, networkInterface.GetIPProperties().GetIPv4Properties().Mtu);
 
         InitRoutinesArray();
         this.cpu = cpu;
