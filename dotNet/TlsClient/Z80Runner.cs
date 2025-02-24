@@ -343,6 +343,15 @@ internal class Z80Runner
         Run("DATA_TRANSPORT.CLOSE");
     }
 
+    public static bool TcpSend(byte[] data)
+    {
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.BC = (short)data.Length;
+        SetInputBuffer(data, BUFFER_IN);
+        Run("DATA_TRANSPORT.SEND");
+        return Z80.CF == 0;
+    }
+
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {

@@ -92,7 +92,7 @@ internal partial class TcpIpUnapi
         if((cpu.C & 0b11111100) != 0)
             return ERR_INV_PAR;
 
-        var dataAddress = cpu.DE;
+        var dataAddress = cpu.DE.ToUShort();
         var dataLength = cpu.HL.ToUShort();
         if(dataLength == 0)
             return ERR_OK;

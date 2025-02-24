@@ -67,15 +67,7 @@ public class TcpDataTransport : IDataTransport
             return false;
         }
 
-        try
-        {
-            client.Send(data.Skip(index).Take(length.Value).ToArray(), true);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        return Z80Runner.TcpSend(data.Skip(index).Take(length.Value).ToArray());
     }
 
     public TcpState? GetConnectionState()
