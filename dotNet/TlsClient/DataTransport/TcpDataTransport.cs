@@ -10,15 +10,10 @@ namespace Konamiman.TlsForZ80.TlsClient.DataTransport;
 public class TcpDataTransport : IDataTransport
 {
     readonly TcpConnection client;
-    readonly string host;
-    readonly int port;
-    bool locallyClosed = false;
 
     public TcpDataTransport(string host, int port)
     {
         client = new TcpConnection(host, port);
-        this.host = host;
-        this.port = port;
     }
 
     public void Connect()
@@ -53,8 +48,10 @@ public class TcpDataTransport : IDataTransport
             return 0;
         }
 
-        var data = client.Receive(length);
-        Array.Copy(data, 0, destination, index, data.Length);
+        var data = Z80Runner.TcReceive(length);
+        if(data.Length > 0) {
+            Array.Copy(data, 0, destination, index, data.Length);
+        }
         return data.Length;
     }
 

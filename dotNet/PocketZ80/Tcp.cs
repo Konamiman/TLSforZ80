@@ -117,7 +117,7 @@ internal partial class TcpIpUnapi
         if(!connection.CanReceive())
             return ERR_CONN_STATE;
 
-        var dataAddress = cpu.DE;
+        var dataAddress = cpu.DE.ToUShort();
         var dataLength = cpu.HL.ToUShort();
 
         cpu.BC = 0;

@@ -352,6 +352,14 @@ internal class Z80Runner
         return Z80.CF == 0;
     }
 
+    public static byte[] TcReceive(int length)
+    {
+        Z80.HL = unchecked((short)BUFFER_OUT);
+        Z80.BC = (short)length;
+        Run("DATA_TRANSPORT.RECEIVE");
+        return GetOutputBuffer(Z80.BC);
+    }
+
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {
