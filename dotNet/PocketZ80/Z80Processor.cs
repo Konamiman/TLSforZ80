@@ -1,5 +1,7 @@
 ﻿using Konamiman.TLSforZ80.PocketZ80;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Konamiman.PocketZ80
 {
@@ -54,6 +56,9 @@ namespace Konamiman.PocketZ80
                     case 0x0003:
                         tcpIpUnapi.HandleEntryPointCall();
                         break;
+                    case 0x0006:
+                        HandleP256Call();
+                        break;
                     default:
                         Execute(Memory[PC++]);
                         break;
@@ -64,6 +69,43 @@ namespace Konamiman.PocketZ80
                     throw new Exception("Z80 code took too long to execute");
                 }
             }
+        }
+
+        ECDiffieHellman localP256Key;
+
+        private void HandleP256Call()
+        {
+            if(A == 0) {
+                // Create new key, store private key internally, return public key
+
+                var localPrivateKeyBytes = new byte[32];
+                RandomNumberGenerator.Create().GetBytes(localPrivateKeyBytes);
+
+                localP256Key = ECDiffieHellman.Create(new ECParameters {
+                    Curve = ECCurve.NamedCurves.nistP256,
+                    D = localPrivateKeyBytes
+                });
+
+
+                var publicKey = localP256Key.ExportSubjectPublicKeyInfo().Skip(27).ToArray();
+                Array.Copy(publicKey, 0, Memory, HL.ToUShort(), publicKey.Length);
+            }
+            else {
+                // Create shared secret from the previously stored private key and the remote public key
+
+                var remotePublicKey = Memory.Skip(HL.ToUShort()).Take(64).ToArray();
+                var remoteEcdhKey = ECDiffieHellman.Create(new ECParameters {
+                    Curve = ECCurve.NamedCurves.nistP256,
+                    Q = new ECPoint {
+                        X = remotePublicKey.Take(32).ToArray(),
+                        Y = remotePublicKey.Skip(32).ToArray(),
+                    }
+                });
+                var sharedSecret = localP256Key.DeriveRawSecretAgreement(remoteEcdhKey.PublicKey);
+                Array.Copy(sharedSecret, 0, Memory, DE.ToUShort(), sharedSecret.Length);
+            }
+
+            ExecuteRet();
         }
 
         public void Reset()

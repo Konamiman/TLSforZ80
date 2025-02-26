@@ -224,13 +224,8 @@ public class TlsClientConnection
     TrafficKeys keys = null;
     RecordEncryption encryption;
     ConnectionState state;
-    bool receivingRecord = false;
-    int receivedRecordReceivedLength = 0;
     int receivedRecordLength = 0;
     string hostName;
-    byte[] localPrivateKeyBytes;
-    ECDiffieHellman localP256Key;
-    byte[] sharedSecret;
     HashAlgorithm hashAlgorithm;
     HMAC hmacAlgorithm;
     List<byte> transmittedHandshakeBytes;
@@ -547,19 +542,8 @@ public class TlsClientConnection
         if(state is ConnectionState.Initial) {
             State = ConnectionState.Handshake;
 
-            if(localPrivateKeyBytes is null) {
-                localPrivateKeyBytes = new byte[32];
-                RandomNumberGenerator.Create().GetBytes(localPrivateKeyBytes);
-            }
-
-            localP256Key ??= ECDiffieHellman.Create(new ECParameters {
-                    Curve = ECCurve.NamedCurves.nistP256,
-                    D = localPrivateKeyBytes
-                });
-
-
             var clientHello = new ClientHelloMessage() {
-                P256PublicKey = localP256Key.ExportSubjectPublicKeyInfo().Skip(27).ToArray(),
+                P256PublicKey = Z80Runner.P256GenerateKeyPair(),
                 ServerName = hostName
             };
             var clientHelloBytes = clientHello.ToByteArray();
@@ -611,15 +595,7 @@ public class TlsClientConnection
             hmacAlgorithm = new HMACSHA256();
             keys = new TrafficKeys();
 
-            byte[] sharedSecret;
-            var remoteEcdhKey = ECDiffieHellman.Create(new ECParameters {
-                Curve = ECCurve.NamedCurves.nistP256,
-                Q = new ECPoint {
-                    X = serverHello.PublicKey.Skip(1).Take(32).ToArray(),
-                    Y = serverHello.PublicKey.Skip(33).ToArray(),
-                }
-            });
-            sharedSecret = localP256Key.DeriveRawSecretAgreement(remoteEcdhKey.PublicKey);
+            var sharedSecret = Z80Runner.P256GenerateSharedSecret(serverHello.PublicKey.Skip(1).ToArray());
 
             keys.ComputeHandshakeKeys(sharedSecret, Z80Runner.CalculateSHA256(transmittedHandshakeBytes.ToArray()));
             encryption = new RecordEncryption(keys);

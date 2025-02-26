@@ -360,6 +360,22 @@ internal class Z80Runner
         return GetOutputBuffer(Z80.BC);
     }
 
+    public static byte[] P256GenerateKeyPair()
+    {
+        Z80.HL = unchecked((short)BUFFER_OUT);
+        Run("P256.GENERATE_KEY_PAIR");
+        return GetOutputBuffer(64);
+    }
+
+    public static byte[] P256GenerateSharedSecret(byte[] remotePublicKey)
+    {
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.DE = unchecked((short)BUFFER_OUT);
+        SetInputBuffer(remotePublicKey);
+        Run("P256.GENERATE_SHARED_KEY");
+        return Z80.CF == 0 ? GetOutputBuffer(32) : null;
+    }
+
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {
