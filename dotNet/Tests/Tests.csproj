@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RootNamespace>Konamiman.TLSforZ80.TlsConsole</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageReference Include="NUnit" Version="4.3.2" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PocketZ80\PocketZ80.csproj" />
+    <ProjectReference Include="..\TlsClient\TlsClient.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembler">
+      <HintPath>..\Assembler.dll</HintPath>
+    </Reference>
+    <Reference Include="Linker">
+      <HintPath>..\Linker.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
