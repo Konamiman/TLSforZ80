@@ -34,6 +34,7 @@ internal class Z80Runner
         foreach(var file in files) {
             var assemblyResult = AssemblySourceProcessor.Assemble(File.ReadAllText(file), new AssemblyConfiguration() {
                 BuildType = BuildType.Relocatable,
+                GetStreamForInclude = fileName => File.OpenRead(Path.Combine(Path.GetDirectoryName(file), fileName))
             });
 
             if(assemblyResult.HasErrors) {
@@ -269,24 +270,24 @@ internal class Z80Runner
         Z80.A = contentType;
         Z80.HL = unchecked((short)BUFFER_IN);
         Z80.BC = (short)content.Length;
-        Z80.DE = unchecked((short)BUFFER_OUT);
+        Z80.DE = unchecked((short)BUFFER_IN);
         SetInputBuffer(content, BUFFER_IN);
 
         Run("RECORD_ENCRYPTION.ENCRYPT");
 
-        return GetOutputBuffer(Z80.BC);
+        return GetOutputBuffer(Z80.BC, BUFFER_IN);
     }
 
     public static (byte errorCode, byte[] decrypted, byte contentType) Decrypt(byte[] encryptedData)
     {
         Z80.HL = unchecked((short)BUFFER_IN);
         Z80.BC = (short)encryptedData.Length;
-        Z80.DE = unchecked((short)BUFFER_OUT);
+        Z80.DE = unchecked((short)BUFFER_IN);
         SetInputBuffer(encryptedData, BUFFER_IN);
 
         Run("RECORD_ENCRYPTION.DECRYPT");
 
-        return (Z80.A, GetOutputBuffer(Z80.BC), Z80.D);
+        return (Z80.A, GetOutputBuffer(Z80.BC, BUFFER_IN), Z80.D);
     }
 
     public static byte[] GetClientHello(string serverName, byte[] publicKey)

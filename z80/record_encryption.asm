@@ -135,11 +135,13 @@ DECRYPT:
     ld a,c
     ld (ADDITIONAL_DATA.ENCRYPTED_LENGTH+1),a
 
-    ;Decrypt
+    ;Compute auth tag
+    ;By doing this BEFORE decrypting we can do in-place decryption
 
     push de
     push hl
     push bc
+
     ld hl,SERVER_KEY
     ld de,SERVER_NONCE
     ld bc,ADDITIONAL_DATA
@@ -151,7 +153,22 @@ DECRYPT:
     sbc hl,bc
     push hl
     pop bc ;BC = Length of data minus the tag
+    pop ix ;Encrypted data
+    push ix
+    push bc
+    call AES_GCM.AUTHTAG
 
+    ld hl,COMPUTED_AUTH_TAG
+    call AES_GCM.FINISH
+
+    ;Decrypt
+
+    ld hl,SERVER_KEY
+    ld de,SERVER_NONCE
+    ld bc,ADDITIONAL_DATA
+    call AES_GCM.INIT
+
+    pop bc ;BC = Length of data minus the tag
     pop hl
     pop de
     push de
@@ -159,29 +176,13 @@ DECRYPT:
     push hl
     call AES_GCM.DECRYPT
 
-    ;Calculate auth tag
-
-    ld hl,SERVER_KEY
-    ld de,SERVER_NONCE
-    ld bc,ADDITIONAL_DATA
-    call AES_GCM.INIT
-
-    pop ix
-    pop bc
-    push bc
-    push ix
-    call AES_GCM.AUTHTAG
-
-    ld hl,AUTH_TAG
-    call AES_GCM.FINISH
-
     ;Validate auth tag
 
     pop hl
     pop bc
     add hl,bc   ;HL = Pointer to received auth tag
     push bc
-    ld de,AUTH_TAG
+    ld de,COMPUTED_AUTH_TAG
     ld b,16
 .CHECK:
     ld a,(de)
@@ -257,8 +258,7 @@ SERVER_IV: ds IV_SIZE
 SERVER_NONCE: ds IV_SIZE
 SERVER_SEQUENCE: ds IV_SIZE
 
-AUTH_TAG: ds 16
-
+COMPUTED_AUTH_TAG: ds TAG_SIZE
 
 ; additional_data = 
 ;   TLSCiphertext.opaque_type ||
