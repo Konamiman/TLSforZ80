@@ -1,6 +1,7 @@
     public DATA_RECEIVER.INIT
     public DATA_RECEIVER.UPDATE
     public DATA_RECEIVER.TLS_RECORD_TYPE.APP_DATA
+    public DATA_RECEIVER.HANDSHAKE_HEADER
     extrn DATA_TRANSPORT.RECEIVE
     extrn DATA_TRANSPORT.HAS_IN_DATA
     extrn DATA_TRANSPORT.IS_REMOTELY_CLOSED
@@ -10,17 +11,18 @@
     module DATA_RECEIVER
 
 ERROR_NO_CHANGE: equ 0
-ERROR_FULL_RECORD_AVAILABLE: equ 1
-ERROR_CONNECTION_CLOSED: equ 2
-ERROR_RECORD_TOO_LONG: equ 3
-ERROR_BAD_AUTH_TAG: equ 4
-ERROR_MSG_ALL_ZEROS: equ 5
-ERROR_RECORD_OVER_16K: equ 6
-ERROR_HANDSHAKE_MSG_TOO_LONG: equ 7
-ERROR_NON_HANDSHAKE_RECEIVED: equ 8
-ERROR_SPLIT_HANDSHAKE_FIRST: equ 128
-ERROR_SPLIT_HANDSHAKE_NEXT: equ 129
-ERROR_SPLIT_HANDSHAKE_LAST: equ 130
+ERROR_CONNECTION_CLOSED: equ 1
+ERROR_RECORD_TOO_LONG: equ 2
+ERROR_BAD_AUTH_TAG: equ 3
+ERROR_MSG_ALL_ZEROS: equ 4
+ERROR_RECORD_OVER_16K: equ 5
+ERROR_HANDSHAKE_MSG_TOO_LONG: equ 6
+ERROR_NON_HANDSHAKE_RECEIVED: equ 7
+ERROR_FULL_RECORD_AVAILABLE: equ 128
+ERROR_FULL_HANDSHAKE_MESSAGE: equ 129
+ERROR_SPLIT_HANDSHAKE_FIRST: equ 130
+ERROR_SPLIT_HANDSHAKE_NEXT: equ 131
+ERROR_SPLIT_HANDSHAKE_LAST: equ 132
 
 FLAG_SPLIT_HANDSHAKE_MSG: equ 1
 
@@ -75,36 +77,31 @@ INIT_FOR_NEXT_RECORD:
 ;--- Update
 ;    Input:  -
 ;    Output: A = 0: No full record available yet
-;                1: Full record available
-;                2: Error: underlying connection is closed
-;                3: Error: message is longer than buffer size
-;                4: Error decrypting record: bad auth tag
-;                5: Error decrypting record: message is all zeros
-;                6: Error: record is longer than 16K
-;                7: Error: handshake message is too long
-;                8: Error: non-handshake record received while split handshake is being received
-;                128: First part of a split handshake message available
-;                129: Next part of a split handshake message available
-;                130: Last part of a split handshake message available
-;            If A = 1 or 128,129,130:
-;            HL = Record address
-;            BC = Record length
-;            D  = Record type (if A=1,128,129,130)
-;            E  = Handshake type (if handshake record and A=1, or if A=128,129,130)
+;                1: Error: underlying connection is closed
+;                2: Error: message is longer than buffer size
+;                3: Error decrypting record: bad auth tag
+;                4: Error decrypting record: message is all zeros
+;                5: Error: record is longer than 16K
+;                6: Error: handshake message is too long
+;                7: Error: non-handshake record received while split handshake is being received
+;                128: Full non-handshake record available
+;                129: Full handshake message available
+;                130: First part of a split handshake message available
+;                131: Next part of a split handshake message available
+;                132: Last part of a split handshake message available
+;            HL = Record address (if A>=128)
+;            BC = Record length (if A=128), message length (if A>=129)
+;            D  = Record type (if A=128)
+;            E  = Handshake type (if A=>129)
 
 UPDATE:
+    ld a,(FLAGS)
+    cp FLAG_MULTIPLE_HANDSHAKE_MSG
+    jp z,EXTRACT_NEXT_HANDSHAKE_MESSAGE
+
     ld a,(RECORD_TYPE)
     or a
-    jr z,START_RECEIVING_RECORD
-
-    ld hl,(REMAINING_RECORD_SIZE)
-    ld a,h
-    or l
     jr nz,CONTINUE_RECEIVING_RECORD
-
-    ;--- Return the next handshake message in a multi-message record
-
-    ;QIP
 
 
     ;--- Start receiving a new record from scratch
@@ -121,15 +118,6 @@ START_RECEIVING_RECORD:
     ld hl,(BUFFER_ADDRESS)
     ld a,(hl)
     ld (RECORD_TYPE),a
-    cp TLS_RECORD_TYPE.HANDSHAKE
-    jr z,.IS_HANDSHAKE
-
-    ld a,(FLAGS)
-    and FLAG_SPLIT_HANDSHAKE_MSG
-    ld a,ERROR_NON_HANDSHAKE_RECEIVED   ;Non-handshake record received while receiving a split handshake message
-    jp z,INIT_FOR_NEXT_RECORD
-
-.IS_HANDSHAKE:
     inc hl
 
     inc hl  ;Just skip and ignore legacy protocol version
@@ -208,13 +196,18 @@ HANDLE_FULL_RECORD:
     ld a,(RECORD_TYPE)
     cp TLS_RECORD_TYPE.HANDSHAKE
     jr z,HANDLE_HANDSHAKE_RECORD
+    ld d,a
 
     ; No handshake record: no further processing needed, just return it
 
-RETURN_FULL_RECORD:
+    ld a,(FLAGS)
+    and FLAG_SPLIT_HANDSHAKE_MSG
+    ld a,ERROR_NON_HANDSHAKE_RECEIVED   ;Non-handshake record received while receiving a split handshake message
+    jp z,INIT_FOR_NEXT_RECORD
+
     ld hl,(BUFFER_ADDRESS)
     ld bc,(RECORD_SIZE)
-    ld d,a  ;Record type
+    ld a,d
 
     ld a,ERROR_FULL_RECORD_AVAILABLE
     push hl
@@ -222,7 +215,10 @@ RETURN_FULL_RECORD:
     pop hl
     ret
 
-    ; It was a handshake record
+    ; It was a handshake record. There are some possibilities:
+    ; 1. The record contains one or more full handshake messages.
+    ; 2. The record contains the first (or the next/last, if FLAG_SPLIT_HANDSHAKE_MSG is set) part of a long handshake message.
+    ; 3. A combination of the above (one or more full messages, then the first part of a long message.)
 
 HANDLE_HANDSHAKE_RECORD:
     ld a,(FLAGS)
@@ -253,9 +249,26 @@ HANDLE_HANDSHAKE_RECORD:
     or a
     sbc hl,bc
 
-    ld a,h
-    or l
-    jr z,SINGLE_HANDSHAKE_MESSAGE
+    bit 7,h
+    jr z,HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE
+    ld a,(FLAGS)
+    or FLAG_MULTIPLE_HANDSHAKE_MSG
+    ld (FLAGS),a    ;Assume multiple handshake messages (could be only one)
+    
+    ld hl,(RECORD_SIZE)
+    ld (REMAINING_RECORD_SIZE),hl
+    ld hl,(BUFFER_ADDRESS)
+    ld (MESSAGE_EXTRACT_POINTER),hl
+
+    ; The record contains one or more full handshake messages.
+    ; We jump here also from UPDATE when FLAG_MULTIPLE_HANDSHAKE_MSG is set.
+
+EXTRACT_NEXT_HANDSHAKE_MESSAGE:
+
+
+    ; We have received the first part of a handshake message split in multiple records.
+
+HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE:
 
     ;WIP!!!
 
@@ -327,12 +340,15 @@ HANDSHAKE_TYPE: db 0
 
 BUFFER_TOTAL_SIZE: dw 0
 
+MESSAGE_SIZE:    ;When FLAG_MULTIPLE_HANDSHAKE_MSG is set
 RECORD_SIZE: dw 0
 
 HANDSHAKE_MSG_SIZE: dw 0
 
+MESSAGE_EXTRACT_POINTER:    ;When FLAG_MULTIPLE_HANDSHAKE_MSG is set
 BUFFER_RECEIVE_POINTER: dw 0
 
+REMAINING_MESSAGE_SIZE:    ;When FLAG_SPLIT_HANDSHAKE_MSG is set
 REMAINING_RECORD_SIZE: dw 0
 
 BUFFER_ADDRESS: dw 0
