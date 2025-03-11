@@ -2,6 +2,7 @@
     public DATA_RECEIVER.UPDATE
     public DATA_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     public DATA_RECEIVER.HANDSHAKE_HEADER
+    public DATA_RECEIVER.HANDSHAKE_MSG_SIZE
     extrn DATA_TRANSPORT.RECEIVE
     extrn DATA_TRANSPORT.HAS_IN_DATA
     extrn DATA_TRANSPORT.IS_REMOTELY_CLOSED
@@ -90,9 +91,10 @@ INIT_FOR_NEXT_RECORD:
 ;                131: Next part of a split handshake message available
 ;                132: Last part of a split handshake message available
 ;            HL = Record address (if A>=128)
-;            BC = Record length (if A=128), message length (if A>=129)
+;            BC = Record length (if A=128), full message length (if A=129), fragmenet length (if A>=130)
+;                 If A>=130, see DATA_RECEIVER.HANDSHAKE_MSG_SIZE for the actual full message size
 ;            D  = Record type (if A=128)
-;            E  = Handshake type (if A=>129)
+;            E  = Handshake type (if A>>129)
 
 UPDATE:
     ld a,(FLAGS)
@@ -228,9 +230,22 @@ HANDLE_HANDSHAKE_RECORD:
     ; The record contains one or more entire handshake messages,
     ; or it's the first part of a long message
 
+    ld hl,(RECORD_SIZE)
+    ld (REMAINING_RECORD_SIZE),hl
     ld hl,(BUFFER_ADDRESS)
+    ld (MESSAGE_EXTRACT_POINTER),hl
+
+    ; We jump here also from UPDATE when FLAG_MULTIPLE_HANDSHAKE_MSG is set.
+
+EXTRACT_NEXT_HANDSHAKE_MESSAGE:
+    ld hl,(MESSAGE_EXTRACT_POINTER)
     ld a,(hl)
     ld (HANDSHAKE_TYPE),a
+    push hl
+    ld de,HANDSHAKE_HEADER
+    ld bc,4
+    ldir
+    pop hl
     inc hl
     
     ld a,(hl)
@@ -245,48 +260,59 @@ HANDLE_HANDSHAKE_RECORD:
     ld h,a  ;HL = Handshake message size
     ld (HANDSHAKE_MSG_SIZE),hl
 
-    ld bc,(RECORD_SIZE)
+    ld bc,(REMAINING_RECORD_SIZE)
     or a
     sbc hl,bc
 
     bit 7,h
     jr z,HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE
+
+    ld a,h
+    or l    ;If zero, it's the last message in the record
+
+    ld hl,(MESSAGE_EXTRACT_POINTER)
+    ld bc,(HANDSHAKE_MSG_SIZE)
+    ld a,(HANDSHAKE_TYPE)
+    ld e,a
+    ld a,ERROR_FULL_HANDSHAKE_MESSAGE
+    jp z,INIT_FOR_NEXT_RECORD
+
+    push hl
+    add hl,bc
+    ld (MESSAGE_EXTRACT_POINTER),hl
+    ld hl,(REMAINING_RECORD_SIZE)
+    or a
+    sbc hl,bc
+    ld (REMAINING_RECORD_SIZE),hl
+
     ld a,(FLAGS)
     or FLAG_MULTIPLE_HANDSHAKE_MSG
-    ld (FLAGS),a    ;Assume multiple handshake messages (could be only one)
-    
-    ld hl,(RECORD_SIZE)
-    ld (REMAINING_RECORD_SIZE),hl
-    ld hl,(BUFFER_ADDRESS)
-    ld (MESSAGE_EXTRACT_POINTER),hl
+    ld (FLAGS),a
 
-    ; The record contains one or more full handshake messages.
-    ; We jump here also from UPDATE when FLAG_MULTIPLE_HANDSHAKE_MSG is set.
-
-EXTRACT_NEXT_HANDSHAKE_MESSAGE:
-
+    pop hl
+    ld a,ERROR_FULL_HANDSHAKE_MESSAGE
+    ret
 
     ; We have received the first part of a handshake message split in multiple records.
 
 HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE:
+    ld a,(FLAGS)
+    or FLAG_SPLIT_HANDSHAKE_MSG
+    ld (FLAGS),a
 
-    ;WIP!!!
-
-    ;The record contains one single handshake message
-
-SINGLE_HANDSHAKE_MESSAGE:
+    ld hl,(MESSAGE_EXTRACT_POINTER)
+    ld bc,(REMAINING_RECORD_SIZE)
     ld a,(HANDSHAKE_TYPE)
     ld e,a
-    ld a,TLS_RECORD_TYPE.HANDSHAKE
-    jr RETURN_FULL_RECORD
+    ld a,ERROR_SPLIT_HANDSHAKE_FIRST
+    jp INIT_FOR_NEXT_RECORD
+
+    ; We have received the next (or last) part of a handshake message split in multiple records.
+
+HANDLE_NEXT_HANDSHAKE_PART:
 
 
-
-    ;WIP!!!
-
-    ; Return the first or the next handshake message from the record
-    ;WIP!!!
-    ret
+    ;WIP
 
 
 ; Receive a block of data from the underlying data transport layer
