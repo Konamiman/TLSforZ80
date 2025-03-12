@@ -9,21 +9,26 @@
     extrn RECORD_ENCRYPTION.DECRYPT
     extrn RECORD_ENCRYPTION.TAG_SIZE
 
+def_error: macro name,code
+name: equ code
+    public name
+    endm
+
     module DATA_RECEIVER
 
-ERROR_NO_CHANGE: equ 0
-ERROR_CONNECTION_CLOSED: equ 1
-ERROR_RECORD_TOO_LONG: equ 2
-ERROR_BAD_AUTH_TAG: equ 3
-ERROR_MSG_ALL_ZEROS: equ 4
-ERROR_RECORD_OVER_16K: equ 5
-ERROR_HANDSHAKE_MSG_TOO_LONG: equ 6
-ERROR_NON_HANDSHAKE_RECEIVED: equ 7
-ERROR_FULL_RECORD_AVAILABLE: equ 128
-ERROR_FULL_HANDSHAKE_MESSAGE: equ 129
-ERROR_SPLIT_HANDSHAKE_FIRST: equ 130
-ERROR_SPLIT_HANDSHAKE_NEXT: equ 131
-ERROR_SPLIT_HANDSHAKE_LAST: equ 132
+def_error ERROR_NO_CHANGE, 0
+def_error ERROR_CONNECTION_CLOSED, 1
+def_error ERROR_RECORD_TOO_LONG, 2
+def_error ERROR_BAD_AUTH_TAG, 3
+def_error ERROR_MSG_ALL_ZEROS, 4
+def_error ERROR_RECORD_OVER_16K, 5
+def_error ERROR_HANDSHAKE_MSG_TOO_LONG, 6
+def_error ERROR_NON_HANDSHAKE_RECEIVED, 7
+def_error ERROR_FULL_RECORD_AVAILABLE, 128
+def_error ERROR_FULL_HANDSHAKE_MESSAGE, 129
+def_error ERROR_SPLIT_HANDSHAKE_FIRST, 130
+def_error ERROR_SPLIT_HANDSHAKE_NEXT, 131
+def_error ERROR_SPLIT_HANDSHAKE_LAST, 132
 
 FLAG_SPLIT_HANDSHAKE_MSG: equ 1
 
@@ -94,7 +99,7 @@ INIT_FOR_NEXT_RECORD:
 ;            BC = Record length (if A=128), full message length (if A=129), fragmenet length (if A>=130)
 ;                 If A>=130, see DATA_RECEIVER.HANDSHAKE_MSG_SIZE for the actual full message size
 ;            D  = Record type (if A=128)
-;            E  = Handshake type (if A>>129)
+;            E  = Handshake type (if A>=129)
 
 UPDATE:
     ld a,(FLAGS)
@@ -132,26 +137,28 @@ START_RECEIVING_RECORD:
     ld (RECORD_SIZE),hl
     ld (REMAINING_RECORD_SIZE),hl
 
-    ld bc,RECORD_ENCRYPTION.TAG_SIZE
-    or a
-    sbc hl,bc   ;Account for the tag at the end of the record to check size
+    ;ld bc,RECORD_ENCRYPTION.TAG_SIZE
+    ;or a
+    ;sbc hl,bc   ;Account for the tag at the end of the record to check size
 
-    ld bc,16384+256
+    push hl
+    pop bc
+    ld hl,16384+256
     or a
     sbc hl,bc
     bit 7,h
     ld a,ERROR_RECORD_OVER_16K
     jp nz,INIT_FOR_NEXT_RECORD
 
-    ld bc,(BUFFER_TOTAL_SIZE)
+    ld hl,(BUFFER_TOTAL_SIZE)
+    ld bc,(RECORD_SIZE)
     or a
     sbc hl,bc
     bit 7,h
     ld a,ERROR_RECORD_TOO_LONG
     jp nz,INIT_FOR_NEXT_RECORD
 
-    xor a
-    ret
+    jr UPDATE
 
 
     ;--- Continue receiving a partially received record
@@ -171,6 +178,7 @@ CONTINUE_RECEIVING_RECORD:
     ; We got a full record!
     ; If it's of application data type we need to decrypt it
 
+GOT_FULL_RECORD:
     ld a,(RECORD_TYPE)
     cp TLS_RECORD_TYPE.APP_DATA
     jr nz,HANDLE_FULL_RECORD
@@ -310,9 +318,23 @@ HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE:
     ; We have received the next (or last) part of a handshake message split in multiple records.
 
 HANDLE_NEXT_HANDSHAKE_PART:
+    ld hl,(REMAINING_MESSAGE_SIZE)
+    ld bc,(RECORD_SIZE)
+    or a
+    sbc hl,bc
+    ld a,h
+    or l
+    ld hl,(BUFFER_ADDRESS)
+    ld bc,(RECORD_SIZE)
+    jr z,HANDLE_LAST_HANDSHAKE_PART
+    ld a,ERROR_SPLIT_HANDSHAKE_NEXT
+    ret
 
-
-    ;WIP
+HANDLE_LAST_HANDSHAKE_PART:
+    ld a,(HANDSHAKE_TYPE)
+    ld e,a
+    ld a,ERROR_SPLIT_HANDSHAKE_LAST
+    jp INIT_FOR_NEXT_RECORD
 
 
 ; Receive a block of data from the underlying data transport layer
@@ -354,9 +376,9 @@ RECEIVE_DATA:
     sbc hl,bc
     ld (REMAINING_RECORD_SIZE),hl
 
-    xor a
     ld a,b
     or c
+    ld a,0
     ret
 
 

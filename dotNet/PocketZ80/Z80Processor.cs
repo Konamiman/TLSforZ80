@@ -23,6 +23,8 @@ namespace Konamiman.PocketZ80
 
         private TcpIpUnapi tcpIpUnapi;
 
+        public Dictionary<ushort, Action> ExecutionHooks { get; private set; } = [];
+
         public TcpConnection TcpConnection 
         { 
             set
@@ -50,18 +52,23 @@ namespace Konamiman.PocketZ80
             watcher.Start();
             while (SP < 0)
             {
-                switch(PC) {
-                    case 0x0000:
-                        return;
-                    case 0x0003:
-                        tcpIpUnapi.HandleEntryPointCall();
-                        break;
-                    case 0x0006:
-                        HandleP256Call();
-                        break;
-                    default:
-                        Execute(Memory[PC++]);
-                        break;
+                if(ExecutionHooks.ContainsKey(PC)) {
+                    ExecutionHooks[PC]();
+                }
+                else {
+                    switch(PC) {
+                        case 0x0000:
+                            return;
+                        case 0x0003:
+                            tcpIpUnapi.HandleEntryPointCall();
+                            break;
+                        case 0x0006:
+                            HandleP256Call();
+                            break;
+                        default:
+                            Execute(Memory[PC++]);
+                            break;
+                    }
                 }
 
                 if(watcher.ElapsedMilliseconds > 3000) {
