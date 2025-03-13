@@ -17,8 +17,8 @@ public class DataReceiverTests
 
     private static Dictionary<string, ushort> symbols = [];
 
-    [SetUp]
-    public void SetUp()
+    [OneTimeSetUp]
+    public void OneTimeSetUp()
     {
         Z80 = new Z80Processor();
 
@@ -90,8 +90,6 @@ public class DataReceiverTests
             file.Item2.Close();
             File.Delete(file.Item1);
         }
-
-        SetupMocks();
     }
 
     private byte[][] _receivedTcpData;
@@ -115,7 +113,8 @@ public class DataReceiverTests
     private byte[] tcpDataRemainingFromPreviousReceive = null;
     private bool tcpConnectionIsRemotelyClosed;
 
-    private void SetupMocks()
+    [SetUp]
+    public void SetUp()
     {
         tcpConnectionIsRemotelyClosed = false;
 
@@ -273,7 +272,7 @@ public class DataReceiverTests
     }
 
     [Test]
-    public void AssertReceiveAlertRecord()
+    public void AssertReceiveAlertRecordInOneGo()
     {
         ReceivedTcpData = [
             [
@@ -289,6 +288,97 @@ public class DataReceiverTests
         AssertBC(4);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4]);
         Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_ALERT));
+    }
+
+    [Test]
+    public void AssertReceiveAlertRecordInMultipleTcpDatagrams()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_ALERT,
+                3, 3,
+                0, 4   //Length
+            ],
+            [],
+            [1,2],
+            [3],
+            [4]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        AssertBC(4);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4]);
+        Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_ALERT));
+    }
+
+    [Test]
+    public void AssertErrorReceivedIfConnectionIsClosed()
+    {
+        tcpConnectionIsRemotelyClosed = true;
+        ReceivedTcpData = [];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_CONNECTION_CLOSED");
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_CONNECTION_CLOSED");
+    }
+
+    [Test]
+    public void AssertErrorReceivedIfRecordIstooBig()
+    {
+        // First receive a record of exactly the buffer size
+
+        Z80.HL = 0x8000.ToShort();
+        Z80.BC = 10;
+        Run("DATA_RECEIVER.INIT");
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_ALERT,
+                3, 3,
+                0, 5,   //Length
+                1, 2, 3, 4, 5
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        AssertBC(5);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
+        Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_ALERT));
+
+        // Now receive a record one byte too big
+
+        Z80.HL = 0x8000.ToShort();
+        Z80.BC = 9;
+        Run("DATA_RECEIVER.INIT");
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_ALERT,
+                3, 3,
+                0, 5,   //Length
+                1, 2, 3, 4, 5
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_RECORD_TOO_LONG");
+
+        //?????
+        Z80.HL = 0x8000.ToShort();
+        Z80.BC = 9;
+        Run("DATA_RECEIVER.INIT");
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
     }
 
     private void AssertMemoryContents(int address, byte[] expectedContents)

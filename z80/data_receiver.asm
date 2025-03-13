@@ -151,6 +151,9 @@ START_RECEIVING_RECORD:
     jp nz,INIT_FOR_NEXT_RECORD
 
     ld hl,(BUFFER_TOTAL_SIZE)
+    ld bc,5
+    or a
+    sbc hl,bc   ;Max record size is the buffer size minus the record header
     ld bc,(RECORD_SIZE)
     or a
     sbc hl,bc
@@ -173,7 +176,8 @@ CONTINUE_RECEIVING_RECORD:
     ld hl,(REMAINING_RECORD_SIZE)
     ld a,h
     or l
-    ret z
+    ld a,0
+    ret nz
 
     ; We got a full record!
     ; If it's of application data type we need to decrypt it
@@ -212,10 +216,16 @@ HANDLE_FULL_RECORD:
 
     ld a,(FLAGS)
     and FLAG_SPLIT_HANDSHAKE_MSG
+    jr z,HANDLE_NON_HANDSHAKE_RECORD
+    ld a,(RECORD_TYPE)
+    cp TLS_RECORD_TYPE.HANDSHAKE
     ld a,ERROR_NON_HANDSHAKE_RECEIVED   ;Non-handshake record received while receiving a split handshake message
     jp z,INIT_FOR_NEXT_RECORD
 
+HANDLE_NON_HANDSHAKE_RECORD:
     ld hl,(BUFFER_ADDRESS)
+    ld bc,5
+    add hl,bc ;Skip record header
     ld bc,(RECORD_SIZE)
     ld a,d
 
@@ -341,8 +351,7 @@ HANDLE_LAST_HANDSHAKE_PART:
 ; Input:  BC = How much data to received (must be at most BUFFER_FREE_SIZE)
 ; Output: A  = Error:
 ;              0: Ok
-;              2: Error: underlying connection is closed
-;              3: Error: message is longer than buffer size
+;              ERROR_CONNECTION_CLOSED: Error: underlying connection is closed
 ;         If A=0:
 ;         BC = How much data was received
 ;         Z set it no data received
@@ -351,20 +360,20 @@ HANDLE_LAST_HANDSHAKE_PART:
 
 RECEIVE_DATA:
     push bc
+    call DATA_TRANSPORT.HAS_IN_DATA
+    jr c,DO_RECEIVE_DATA
+
     call DATA_TRANSPORT.IS_REMOTELY_CLOSED
     pop bc
     ld a,ERROR_CONNECTION_CLOSED
-    jp c,INIT_FOR_NEXT_RECORD
+    ret c
 
-    push bc
-    call DATA_TRANSPORT.HAS_IN_DATA
-    pop hl
     ld bc,0
-    ld a,b
-    ret nc
-    push hl
-    pop bc
+    xor a
+    ret
 
+DO_RECEIVE_DATA:
+    pop bc
     ld hl,(BUFFER_RECEIVE_POINTER)
     push hl
     call DATA_TRANSPORT.RECEIVE
