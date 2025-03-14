@@ -9,13 +9,16 @@ namespace Konamiman.TLSforZ80.Tests;
 
 public class DataReceiverTests
 {
-    const int BUFFER_IN = 0x8000;
-    const int BUFFER_OUT = 0xC000;
     const byte TLS_RECORD_TYPE_ALERT = 21;
+    const byte TLS_RECORD_TYPE_APP_DATA = 23;
+    const byte TLS_RECORD_TYPE_DUMMY = 99;
 
     private static Z80Processor Z80;
 
     private static Dictionary<string, ushort> symbols = [];
+    private byte encryptedRecordType;
+    private bool badAuthTag;
+    private bool recordAllZeros;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -117,6 +120,11 @@ public class DataReceiverTests
     public void SetUp()
     {
         tcpConnectionIsRemotelyClosed = false;
+        ReceivedTcpData = [];
+        hasMoreReceivedTcpData = false;
+        tcpDataRemainingFromPreviousReceive = null;
+        badAuthTag = false;
+        recordAllZeros = false;
 
         Z80.ExecutionHooks.Clear();
         Z80.ExecutionHooks[symbols["DATA_TRANSPORT.HAS_IN_DATA"]] = () => {
@@ -158,8 +166,27 @@ public class DataReceiverTests
             }
             Z80.ExecuteRet();
         };
+        Z80.ExecutionHooks[symbols["RECORD_ENCRYPTION.DECRYPT"]] = () => {
+            if(badAuthTag) {
+                Z80.A = 1; //"Bad auth tag" error
+            }
+            else if(recordAllZeros) {
+                Z80.A = 2; //"Record is all zeros" error
+            }
+            else {
+                // Simulate "decryption" by simply removing last data byte and setting the high byte of all the content
+                var data = Z80.Memory.Skip(Z80.HL.ToUShort()).Take(Z80.BC.ToUShort()).ToArray();
+                data = data.Select(x => (byte)(x | 0x80)).ToArray();
+                Array.Copy(data, 0, Z80.Memory, Z80.DE.ToUShort(), data.Length - 1);
 
-        Z80.HL = 0x8000.ToShort();
+                Z80.A = 0;
+                Z80.BC = (short)(data.Length - 1);
+                Z80.D = encryptedRecordType;
+            }
+            Z80.ExecuteRet();
+        };
+
+            Z80.HL = 0x8000.ToShort();
         Z80.BC = 1024;
         Run("DATA_RECEIVER.INIT");
     }
@@ -372,13 +399,101 @@ public class DataReceiverTests
 
         Run("DATA_RECEIVER.UPDATE");
         AssertA("DATA_RECEIVER.ERROR_RECORD_TOO_LONG");
+    }
 
-        //?????
+    [Test]
+    public void AssertErrorReceivedIfRecordIsOver16K()
+    {
         Z80.HL = 0x8000.ToShort();
-        Z80.BC = 9;
+        Z80.BC = 20000;
         Run("DATA_RECEIVER.INIT");
+
+        var recordContent = Enumerable.Repeat<byte>(34, 0x4100).ToArray();
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_ALERT,
+                3, 3,
+                0x41, 0,   //Length: 16384+256
+                ..recordContent
+            ]
+        ];
+
         Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        AssertBC(0x4100);
+        AssertMemoryContents(Z80.HL.ToUShort(), recordContent);
+        Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_ALERT));
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_ALERT,
+                3, 3,
+                0x41, 1,   //Length: 16384+256+1
+                ..recordContent,
+                34
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_RECORD_OVER_16K");
+    }
+
+    [Test]
+    public void TestBadAuthTagInEncryptedRecord()
+    {
+        ReceivedTcpData = [
+           [
+                TLS_RECORD_TYPE_APP_DATA,
+                3, 3,
+                0, 5,   //Length
+                1, 2, 3, 4, 5
+            ]
+       ];
+
+        badAuthTag = true;
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_BAD_AUTH_TAG");
+    }
+
+    [Test]
+    public void TestRecordAllZerosInEncryptedRecord()
+    {
+        ReceivedTcpData = [
+           [
+                TLS_RECORD_TYPE_APP_DATA,
+                3, 3,
+                0, 5,   //Length
+                1, 2, 3, 4, 5
+            ]
+       ];
+
+        recordAllZeros = true;
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_MSG_ALL_ZEROS");
+    }
+
+    [Test]
+    public void TestRceiveEncryptedRecord()
+    {
+        ReceivedTcpData = [
+           [
+                TLS_RECORD_TYPE_APP_DATA,
+                3, 3,
+                0, 8,   //Length
+                1, 2, 3, 4, 5, 6, 7, 8
+            ]
+        ];
+
+        encryptedRecordType = TLS_RECORD_TYPE_DUMMY;
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_DUMMY));
+        AssertBC(7);
+        AssertMemoryContents(Z80.HL.ToUShort(), [0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87]);
     }
 
     private void AssertMemoryContents(int address, byte[] expectedContents)

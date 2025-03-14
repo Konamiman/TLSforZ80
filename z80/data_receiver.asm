@@ -188,6 +188,8 @@ GOT_FULL_RECORD:
     jr nz,HANDLE_FULL_RECORD
 
     ld hl,(BUFFER_ADDRESS)
+    ld bc,5
+    add hl,bc   ;Skip record header
     ld bc,(RECORD_SIZE)
     push hl
     pop de
