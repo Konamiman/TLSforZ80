@@ -10,8 +10,12 @@ namespace Konamiman.TLSforZ80.Tests;
 public class DataReceiverTests
 {
     const byte TLS_RECORD_TYPE_ALERT = 21;
+    const byte TLS_RECORD_TYPE_HANDSHAKE = 22;
     const byte TLS_RECORD_TYPE_APP_DATA = 23;
     const byte TLS_RECORD_TYPE_DUMMY = 99;
+    const byte TLS_HANDSHAKE_TYPE_DUMMY = 199;
+    const byte TLS_HANDSHAKE_TYPE_DUMMY_2 = 200;
+
 
     private static Z80Processor Z80;
 
@@ -494,6 +498,84 @@ public class DataReceiverTests
         Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_DUMMY));
         AssertBC(7);
         AssertMemoryContents(Z80.HL.ToUShort(), [0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87]);
+    }
+
+    [Test]
+    public void TlsReceiveTooLongHandshakeMessage()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 9,    //Record length
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                1, 0, 0, //Handshake length
+                1, 2, 3, 4, 5
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_HANDSHAKE_MSG_TOO_LONG");
+    }
+
+    [Test]
+    public void TlsReceiveSingleHandshakeMessage()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 9,    //Record length
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                0, 0, 5, //Handshake length
+                1, 2, 3, 4, 5
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        AssertBC(5);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 5]);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+    }
+
+    [Test]
+    public void TlsReceiveMultipleHandshakeMessagesInOneRecord()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 16,    //Record length
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                0, 0, 5, //Handshake length
+                1, 2, 3, 4, 5,
+                TLS_HANDSHAKE_TYPE_DUMMY_2,
+                0, 0, 3, //Handshake length
+                6, 7, 8
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        AssertBC(5);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 5]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        AssertBC(3);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 3]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8]);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
     }
 
     private void AssertMemoryContents(int address, byte[] expectedContents)

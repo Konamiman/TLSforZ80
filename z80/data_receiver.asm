@@ -70,8 +70,10 @@ INIT:
 
 INIT_FOR_NEXT_RECORD:
     push af
+    push hl
     ld hl,(BUFFER_ADDRESS)
     ld (BUFFER_RECEIVE_POINTER),hl
+    pop hl
     xor a
     ld (HANDSHAKE_TYPE),a
     ld (RECORD_TYPE),a
@@ -245,14 +247,19 @@ HANDLE_NON_HANDSHAKE_RECORD:
 HANDLE_HANDSHAKE_RECORD:
     ld a,(FLAGS)
     and FLAG_SPLIT_HANDSHAKE_MSG
-    jr nz,HANDLE_NEXT_HANDSHAKE_PART
+    jp nz,HANDLE_NEXT_HANDSHAKE_PART
 
     ; The record contains one or more entire handshake messages,
     ; or it's the first part of a long message
 
     ld hl,(RECORD_SIZE)
+    ld bc,4
+    or a
+    sbc hl,bc   ;Don't count handshake message header
     ld (REMAINING_RECORD_SIZE),hl
     ld hl,(BUFFER_ADDRESS)
+    ld bc,5
+    add hl,bc   ;Skip record header
     ld (MESSAGE_EXTRACT_POINTER),hl
 
     ; We jump here also from UPDATE when FLAG_MULTIPLE_HANDSHAKE_MSG is set.
@@ -274,42 +281,50 @@ EXTRACT_NEXT_HANDSHAKE_MESSAGE:
     jp nz,INIT_FOR_NEXT_RECORD
 
     inc hl
-    ld a,(hl)
+    ld b,(hl)
     inc hl
-    ld l,(hl)
-    ld h,a  ;HL = Handshake message size
+    ld c,(hl)
+    inc hl
+    ld (MESSAGE_EXTRACT_POINTER),hl
+    push bc
+    pop hl  ;HL = Handshake message size
     ld (HANDSHAKE_MSG_SIZE),hl
 
     ld bc,(REMAINING_RECORD_SIZE)
     or a
     sbc hl,bc
+    ld a,h
+    or l    ;If zero, it's the last message in the record
+    jr z,EXTRACT_FULL_HANDSHAKE_MESSAGE
 
     bit 7,h
     jr z,HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE
+    or a   ;Force NZ
 
-    ld a,h
-    or l    ;If zero, it's the last message in the record
-
+EXTRACT_FULL_HANDSHAKE_MESSAGE:
+    push af
     ld hl,(MESSAGE_EXTRACT_POINTER)
     ld bc,(HANDSHAKE_MSG_SIZE)
-    ld a,(HANDSHAKE_TYPE)
-    ld e,a
-    ld a,ERROR_FULL_HANDSHAKE_MESSAGE
-    jp z,INIT_FOR_NEXT_RECORD
-
     push hl
     add hl,bc
     ld (MESSAGE_EXTRACT_POINTER),hl
     ld hl,(REMAINING_RECORD_SIZE)
     or a
     sbc hl,bc
+    dec hl
+    dec hl
+    dec hl
+    dec hl  ;Substract current handshake message header
     ld (REMAINING_RECORD_SIZE),hl
-
-    ld a,(FLAGS)
-    or FLAG_MULTIPLE_HANDSHAKE_MSG
-    ld (FLAGS),a
-
+    ld a,(HANDSHAKE_TYPE)
+    ld e,a
     pop hl
+    pop af
+    ld a,ERROR_FULL_HANDSHAKE_MESSAGE
+    jp z,INIT_FOR_NEXT_RECORD
+
+    ld a,FLAG_MULTIPLE_HANDSHAKE_MSG
+    ld (FLAGS),a
     ld a,ERROR_FULL_HANDSHAKE_MESSAGE
     ret
 
