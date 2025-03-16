@@ -75,7 +75,7 @@ INIT_FOR_NEXT_RECORD:
     ld (BUFFER_RECEIVE_POINTER),hl
     pop hl
     xor a
-    ld (HANDSHAKE_TYPE),a
+    ;ld (HANDSHAKE_TYPE),a
     ld (RECORD_TYPE),a
     ld (FLAGS),a
     pop af
@@ -288,7 +288,7 @@ EXTRACT_NEXT_HANDSHAKE_MESSAGE:
     ld (MESSAGE_EXTRACT_POINTER),hl
     push bc
     pop hl  ;HL = Handshake message size
-    ld (HANDSHAKE_MSG_SIZE),hl
+    ld (HANDSHAKE_MSG_SIZE),bc
 
     ld bc,(REMAINING_RECORD_SIZE)
     or a
@@ -331,16 +331,21 @@ EXTRACT_FULL_HANDSHAKE_MESSAGE:
     ; We have received the first part of a handshake message split in multiple records.
 
 HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE:
-    ld a,(FLAGS)
-    or FLAG_SPLIT_HANDSHAKE_MSG
-    ld (FLAGS),a
+    ld hl,(HANDSHAKE_MSG_SIZE)
+    ld bc,(REMAINING_RECORD_SIZE)
+    or a
+    sbc hl,bc
+    ld (REMAINING_MESSAGE_SIZE),hl
 
     ld hl,(MESSAGE_EXTRACT_POINTER)
     ld bc,(REMAINING_RECORD_SIZE)
     ld a,(HANDSHAKE_TYPE)
     ld e,a
+    call INIT_FOR_NEXT_RECORD
+    ld a,FLAG_SPLIT_HANDSHAKE_MSG
+    ld (FLAGS),a
     ld a,ERROR_SPLIT_HANDSHAKE_FIRST
-    jp INIT_FOR_NEXT_RECORD
+    ret
 
     ; We have received the next (or last) part of a handshake message split in multiple records.
 
@@ -349,11 +354,17 @@ HANDLE_NEXT_HANDSHAKE_PART:
     ld bc,(RECORD_SIZE)
     or a
     sbc hl,bc
+    ld (REMAINING_MESSAGE_SIZE),hl
     ld a,h
     or l
     ld hl,(BUFFER_ADDRESS)
+    ld bc,5
+    add hl,bc ;Skip record header
     ld bc,(RECORD_SIZE)
     jr z,HANDLE_LAST_HANDSHAKE_PART
+    call INIT_FOR_NEXT_RECORD
+    ld a,FLAG_SPLIT_HANDSHAKE_MSG
+    ld (FLAGS),a
     ld a,ERROR_SPLIT_HANDSHAKE_NEXT
     ret
 
@@ -422,7 +433,7 @@ HANDSHAKE_MSG_SIZE: dw 0
 MESSAGE_EXTRACT_POINTER:    ;When FLAG_MULTIPLE_HANDSHAKE_MSG is set
 BUFFER_RECEIVE_POINTER: dw 0
 
-REMAINING_MESSAGE_SIZE:    ;When FLAG_SPLIT_HANDSHAKE_MSG is set
+REMAINING_MESSAGE_SIZE: dw 0    ;When FLAG_SPLIT_HANDSHAKE_MSG is set
 REMAINING_RECORD_SIZE: dw 0
 
 BUFFER_ADDRESS: dw 0

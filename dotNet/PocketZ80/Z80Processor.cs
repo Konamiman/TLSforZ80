@@ -62,9 +62,9 @@ namespace Konamiman.PocketZ80
                         case 0x0003:
                             tcpIpUnapi.HandleEntryPointCall();
                             break;
-                        case 0x0006:
-                            HandleP256Call();
-                            break;
+                        //case 0x0006:
+                        //    HandleP256Call();
+                        //    break;
                         default:
                             Execute(Memory[PC++]);
                             break;

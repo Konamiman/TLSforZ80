@@ -578,6 +578,58 @@ public class DataReceiverTests
         AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
     }
 
+    [Test]
+    public void TlsReceiveHandshakeMessageSplitInMultipleRecords()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 9,    //Record length
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                0, 0, 20, //Handshake length
+                1, 2, 3, 4, 5
+            ],
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 7,    //Record length
+                6, 7, 8, 9, 10, 11, 12
+            ],
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 8,    //Record length
+                13, 14, 15, 16, 17, 18, 19, 20
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        AssertBC(5);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_NEXT");
+        AssertBC(7);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8, 9, 10, 11, 12]);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
+        AssertBC(8);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [13, 14, 15, 16, 17, 18, 19, 20]);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+    }
+
     private void AssertMemoryContents(int address, byte[] expectedContents)
     {
         var actualContents = Z80.Memory.Skip(address).Take(expectedContents.Length).ToArray();
@@ -602,6 +654,13 @@ public class DataReceiverTests
     private void AssertA(string errorCodeName)
     {
         Assert.That(Z80.A, Is.EqualTo(symbols[errorCodeName]));
+    }
+
+    private void AssertWordInMemory(string addressName, int expected)
+    {
+        var address = symbols[addressName];
+        var actual = Z80.Memory[address] + (Z80.Memory[address+1] << 8);
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     private static void Run(string symbol)
