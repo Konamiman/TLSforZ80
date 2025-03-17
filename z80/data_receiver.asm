@@ -221,10 +221,10 @@ HANDLE_FULL_RECORD:
     ld a,(FLAGS)
     and FLAG_SPLIT_HANDSHAKE_MSG
     jr z,HANDLE_NON_HANDSHAKE_RECORD
-    ld a,(RECORD_TYPE)
+    ld a,d
     cp TLS_RECORD_TYPE.HANDSHAKE
     ld a,ERROR_NON_HANDSHAKE_RECEIVED   ;Non-handshake record received while receiving a split handshake message
-    jp z,INIT_FOR_NEXT_RECORD
+    jp nz,INIT_FOR_NEXT_RECORD
 
 HANDLE_NON_HANDSHAKE_RECORD:
     ld hl,(BUFFER_ADDRESS)

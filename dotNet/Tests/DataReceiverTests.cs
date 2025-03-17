@@ -618,6 +618,7 @@ public class DataReceiverTests
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
         AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
         AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8, 9, 10, 11, 12]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
 
         Run("DATA_RECEIVER.UPDATE");
         AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
@@ -625,9 +626,72 @@ public class DataReceiverTests
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
         AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
         AssertMemoryContents(Z80.HL.ToUShort(), [13, 14, 15, 16, 17, 18, 19, 20]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
 
         Run("DATA_RECEIVER.UPDATE");
         AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+    }
+
+    [Test]
+    public void TlsReceiveHandshakeMessageSplitInMultipleRecordsAndNonHandshakeInBetween()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 9,    //Record length
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                0, 0, 20, //Handshake length
+                1, 2, 3, 4, 5
+            ],
+            [
+                TLS_RECORD_TYPE_DUMMY,
+                3, 3,
+                0, 3,    //Record length
+                1, 2, 3
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NON_HANDSHAKE_RECEIVED");
+    }
+
+    [Test]
+    public void TlsReceiveMultipleHandshakeMessagesInOneRecordAndThenAFragment()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 25,    //Record length
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                0, 0, 5, //Handshake length
+                1, 2, 3, 4, 5,
+                TLS_HANDSHAKE_TYPE_DUMMY_2,
+                0, 0, 3, //Handshake length
+                6, 7, 8,
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                0, 0, 25, //Handshake length
+                1, 2, 3, 4, 5
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        AssertBC(5);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 25]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 25);
     }
 
     private void AssertMemoryContents(int address, byte[] expectedContents)
