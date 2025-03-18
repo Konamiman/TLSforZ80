@@ -8,6 +8,8 @@
     extrn DATA_TRANSPORT.IS_REMOTELY_CLOSED
     extrn RECORD_ENCRYPTION.DECRYPT
     extrn RECORD_ENCRYPTION.TAG_SIZE
+    public DATA_RECEIVER.REMAINING_RECORD_SIZE ;!!!
+    public DATA_RECEIVER.FLAGS ;!!!
 
 def_error: macro name,code
 name: equ code
@@ -75,7 +77,6 @@ INIT_FOR_NEXT_RECORD:
     ld (BUFFER_RECEIVE_POINTER),hl
     pop hl
     xor a
-    ;ld (HANDSHAKE_TYPE),a
     ld (RECORD_TYPE),a
     ld (FLAGS),a
     pop af
@@ -302,7 +303,7 @@ EXTRACT_NEXT_HANDSHAKE_MESSAGE:
     or a   ;Force NZ
 
 EXTRACT_FULL_HANDSHAKE_MESSAGE:
-    push af
+    ;push af
     ld hl,(MESSAGE_EXTRACT_POINTER)
     ld bc,(HANDSHAKE_MSG_SIZE)
     push hl
@@ -319,7 +320,10 @@ EXTRACT_FULL_HANDSHAKE_MESSAGE:
     ld a,(HANDSHAKE_TYPE)
     ld e,a
     pop hl
-    pop af
+    ;pop af
+    ld hl,(REMAINING_RECORD_SIZE)
+    ld a,h
+    or l
     ld a,ERROR_FULL_HANDSHAKE_MESSAGE
     jp z,INIT_FOR_NEXT_RECORD
 
@@ -354,14 +358,21 @@ HANDLE_NEXT_HANDSHAKE_PART:
     ld bc,(RECORD_SIZE)
     or a
     sbc hl,bc
-    ld (REMAINING_MESSAGE_SIZE),hl
-    ld a,h
-    or l
+    ex de,hl
     ld hl,(BUFFER_ADDRESS)
     ld bc,5
     add hl,bc ;Skip record header
+    bit 7,d
+    jr nz,HANDLE_LAST_HANDSHAKE_PART_AND_MORE_MSGS
+    ld (REMAINING_MESSAGE_SIZE),de
+
+    ld a,d
+    or e
+    ld a,(HANDSHAKE_TYPE)
+    ld e,a
     ld bc,(RECORD_SIZE)
     jr z,HANDLE_LAST_HANDSHAKE_PART
+
     call INIT_FOR_NEXT_RECORD
     ld a,FLAG_SPLIT_HANDSHAKE_MSG
     ld (FLAGS),a
@@ -369,10 +380,26 @@ HANDLE_NEXT_HANDSHAKE_PART:
     ret
 
 HANDLE_LAST_HANDSHAKE_PART:
+    ld a,ERROR_SPLIT_HANDSHAKE_LAST
+    jp INIT_FOR_NEXT_RECORD
+
+HANDLE_LAST_HANDSHAKE_PART_AND_MORE_MSGS:
+    push hl
+    ld bc,(REMAINING_MESSAGE_SIZE)
+    add hl,bc
+    ld (MESSAGE_EXTRACT_POINTER),hl
+    ld hl,(RECORD_SIZE)
+    or a
+    sbc hl,bc
+    ld (REMAINING_RECORD_SIZE),hl
+    pop hl
+
+    ld a,FLAG_MULTIPLE_HANDSHAKE_MSG
+    ld (FLAGS),a
     ld a,(HANDSHAKE_TYPE)
     ld e,a
     ld a,ERROR_SPLIT_HANDSHAKE_LAST
-    jp INIT_FOR_NEXT_RECORD
+    ret
 
 
 ; Receive a block of data from the underlying data transport layer
