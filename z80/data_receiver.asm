@@ -8,8 +8,6 @@
     extrn DATA_TRANSPORT.IS_REMOTELY_CLOSED
     extrn RECORD_ENCRYPTION.DECRYPT
     extrn RECORD_ENCRYPTION.TAG_SIZE
-    public DATA_RECEIVER.REMAINING_RECORD_SIZE ;!!!
-    public DATA_RECEIVER.FLAGS ;!!!
 
 def_error: macro name,code
 name: equ code
@@ -254,9 +252,6 @@ HANDLE_HANDSHAKE_RECORD:
     ; or it's the first part of a long message
 
     ld hl,(RECORD_SIZE)
-    ld bc,4
-    or a
-    sbc hl,bc   ;Don't count handshake message header
     ld (REMAINING_RECORD_SIZE),hl
     ld hl,(BUFFER_ADDRESS)
     ld bc,5
@@ -292,6 +287,10 @@ EXTRACT_NEXT_HANDSHAKE_MESSAGE:
     ld (HANDSHAKE_MSG_SIZE),bc
 
     ld bc,(REMAINING_RECORD_SIZE)
+    dec bc  ;Don't count handshake message header
+    dec bc
+    dec bc
+    dec bc
     or a
     sbc hl,bc
     ld a,h
@@ -300,10 +299,8 @@ EXTRACT_NEXT_HANDSHAKE_MESSAGE:
 
     bit 7,h
     jr z,HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE
-    or a   ;Force NZ
 
 EXTRACT_FULL_HANDSHAKE_MESSAGE:
-    ;push af
     ld hl,(MESSAGE_EXTRACT_POINTER)
     ld bc,(HANDSHAKE_MSG_SIZE)
     push hl
@@ -319,11 +316,10 @@ EXTRACT_FULL_HANDSHAKE_MESSAGE:
     ld (REMAINING_RECORD_SIZE),hl
     ld a,(HANDSHAKE_TYPE)
     ld e,a
-    pop hl
-    ;pop af
     ld hl,(REMAINING_RECORD_SIZE)
     ld a,h
     or l
+    pop hl
     ld a,ERROR_FULL_HANDSHAKE_MESSAGE
     jp z,INIT_FOR_NEXT_RECORD
 
@@ -337,12 +333,16 @@ EXTRACT_FULL_HANDSHAKE_MESSAGE:
 HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE:
     ld hl,(HANDSHAKE_MSG_SIZE)
     ld bc,(REMAINING_RECORD_SIZE)
+    dec bc
+    dec bc
+    dec bc
+    dec bc  ;Don't count handshake message header
     or a
     sbc hl,bc
     ld (REMAINING_MESSAGE_SIZE),hl
+    ;Here BC is already the current message part size
 
     ld hl,(MESSAGE_EXTRACT_POINTER)
-    ld bc,(REMAINING_RECORD_SIZE)
     ld a,(HANDSHAKE_TYPE)
     ld e,a
     call INIT_FOR_NEXT_RECORD
@@ -452,7 +452,7 @@ HANDSHAKE_TYPE: db 0
 
 BUFFER_TOTAL_SIZE: dw 0
 
-MESSAGE_SIZE:    ;When FLAG_MULTIPLE_HANDSHAKE_MSG is set
+MESSAGE_SIZE: dw 0   ;When FLAG_MULTIPLE_HANDSHAKE_MSG is set
 RECORD_SIZE: dw 0
 
 HANDSHAKE_MSG_SIZE: dw 0

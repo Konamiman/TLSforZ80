@@ -759,10 +759,7 @@ public class DataReceiverTests
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5, 6, 7]);
         AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 7);
 
-        var x = GetWordFromMemory("DATA_RECEIVER.REMAINING_RECORD_SIZE");
-
         Run("DATA_RECEIVER.UPDATE");
-        var f = Z80.Memory[symbols["DATA_RECEIVER.FLAGS"]];
         AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
     }
 
