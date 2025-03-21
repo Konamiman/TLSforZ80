@@ -763,6 +763,94 @@ public class DataReceiverTests
         AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
     }
 
+    [Test]
+    public void TlsReceiveHandshakeMessageSplitInMultipleRecordsAndThenEntireMessagesAndThenSplitAgain()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 9,    //Record length
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                0, 0, 8, //Handshake length
+                1, 2, 3, 4, 5
+            ],
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 31,    //Record length
+                6, 7, 8,
+                TLS_HANDSHAKE_TYPE_DUMMY_2,
+                0, 0, 4, //Handshake length
+                1, 2, 3, 4,
+                TLS_HANDSHAKE_TYPE_DUMMY,
+                0, 0, 7, //Handshake length
+                1, 2, 3, 4, 5, 6, 7,
+                // Another split message begins!
+                TLS_HANDSHAKE_TYPE_DUMMY_2,
+                0, 0, 8, //Handshake length
+                1, 2, 3, 4, 5
+            ],
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 3,    //Record length
+                6, 7, 8
+            ]
+        ];
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        AssertBC(5);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
+        AssertBC(3);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        AssertBC(4);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 4]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 4);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        AssertBC(7);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 7]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5, 6, 7]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 7);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        AssertBC(5);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 8]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
+        AssertBC(3);
+        Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
+        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 8]);
+        AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8]);
+        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+
+        Run("DATA_RECEIVER.UPDATE");
+        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+    }
+
     private void AssertMemoryContents(int address, byte[] expectedContents)
     {
         var actualContents = Z80.Memory.Skip(address).Take(expectedContents.Length).ToArray();
