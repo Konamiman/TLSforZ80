@@ -193,7 +193,7 @@ public class DataReceiverTests
 
         Z80.HL = 0x8000.ToShort();
         Z80.BC = 1024;
-        Run("DATA_RECEIVER.INIT");
+        Run("RECORD_RECEIVER.INIT");
     }
 
     [Test]
@@ -297,10 +297,10 @@ public class DataReceiverTests
     public void AssertNoChangeIfNoData()
     {
         ReceivedTcpData = [];
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
     }
 
     [Test]
@@ -315,8 +315,8 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
         AssertBC(4);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4]);
         Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_ALERT));
@@ -337,15 +337,15 @@ public class DataReceiverTests
             [4]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
         AssertBC(4);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4]);
         Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_ALERT));
@@ -357,10 +357,10 @@ public class DataReceiverTests
         tcpConnectionIsRemotelyClosed = true;
         ReceivedTcpData = [];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_CONNECTION_CLOSED");
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_CONNECTION_CLOSED");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_CONNECTION_CLOSED");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_CONNECTION_CLOSED");
     }
 
     [Test]
@@ -370,7 +370,7 @@ public class DataReceiverTests
 
         Z80.HL = 0x8000.ToShort();
         Z80.BC = 10;
-        Run("DATA_RECEIVER.INIT");
+        Run("RECORD_RECEIVER.INIT");
 
         ReceivedTcpData = [
             [
@@ -381,8 +381,8 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
         AssertBC(5);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
         Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_ALERT));
@@ -391,7 +391,7 @@ public class DataReceiverTests
 
         Z80.HL = 0x8000.ToShort();
         Z80.BC = 9;
-        Run("DATA_RECEIVER.INIT");
+        Run("RECORD_RECEIVER.INIT");
 
         ReceivedTcpData = [
             [
@@ -402,8 +402,8 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_RECORD_TOO_LONG");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_RECORD_TOO_LONG");
     }
 
     [Test]
@@ -411,7 +411,7 @@ public class DataReceiverTests
     {
         Z80.HL = 0x8000.ToShort();
         Z80.BC = 20000;
-        Run("DATA_RECEIVER.INIT");
+        Run("RECORD_RECEIVER.INIT");
 
         var recordContent = Enumerable.Repeat<byte>(34, 0x4100).ToArray();
 
@@ -424,8 +424,8 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
         AssertBC(0x4100);
         AssertMemoryContents(Z80.HL.ToUShort(), recordContent);
         Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_ALERT));
@@ -440,8 +440,8 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_RECORD_OVER_16K");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_RECORD_OVER_16K");
     }
 
     [Test]
@@ -458,8 +458,8 @@ public class DataReceiverTests
 
         badAuthTag = true;
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_BAD_AUTH_TAG");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_BAD_AUTH_TAG");
     }
 
     [Test]
@@ -476,8 +476,8 @@ public class DataReceiverTests
 
         recordAllZeros = true;
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_MSG_ALL_ZEROS");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_MSG_ALL_ZEROS");
     }
 
     [Test]
@@ -494,8 +494,8 @@ public class DataReceiverTests
 
         encryptedRecordType = TLS_RECORD_TYPE_DUMMY;
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE");
         Assert.That(Z80.D, Is.EqualTo(TLS_RECORD_TYPE_DUMMY));
         AssertBC(7);
         AssertMemoryContents(Z80.HL.ToUShort(), [0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87]);
@@ -515,8 +515,8 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_HANDSHAKE_MSG_TOO_LONG");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_HANDSHAKE_MSG_TOO_LONG");
     }
 
     [Test]
@@ -533,15 +533,15 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
         AssertBC(5);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 5]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 5]);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
     }
 
     [Test]
@@ -561,22 +561,22 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
         AssertBC(5);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 5]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 5]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
         AssertBC(3);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 3]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 3]);
         AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8]);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
     }
 
     [Test]
@@ -605,32 +605,32 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
         AssertBC(5);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_NEXT");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_NEXT");
         AssertBC(7);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
         AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8, 9, 10, 11, 12]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
         AssertBC(8);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 20]);
         AssertMemoryContents(Z80.HL.ToUShort(), [13, 14, 15, 16, 17, 18, 19, 20]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 20);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
     }
 
     [Test]
@@ -653,14 +653,14 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NON_HANDSHAKE_RECEIVED");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NON_HANDSHAKE_RECEIVED");
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
     }
 
     [Test]
@@ -683,22 +683,22 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
         AssertBC(5);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 25]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 25]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 25);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 25);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
     }
 
     [Test]
@@ -727,40 +727,40 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
         AssertBC(5);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
         AssertBC(3);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
         AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
         AssertBC(4);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 4]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 4]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 4);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 4);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
         AssertBC(7);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 7]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 7]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5, 6, 7]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 7);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 7);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
     }
 
     [Test]
@@ -799,56 +799,56 @@ public class DataReceiverTests
             ]
         ];
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
         AssertBC(5);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
         AssertBC(3);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 8]);
         AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
         AssertBC(4);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 4]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 4]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 4);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 4);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE");
         AssertBC(7);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 7]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY, 0, 0, 7]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5, 6, 7]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 7);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 7);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST");
         AssertBC(5);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 8]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 8]);
         AssertMemoryContents(Z80.HL.ToUShort(), [1, 2, 3, 4, 5]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_LAST");
         AssertBC(3);
         Assert.That(Z80.E, Is.EqualTo(TLS_HANDSHAKE_TYPE_DUMMY_2));
-        AssertMemoryContents(symbols["DATA_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 8]);
+        AssertMemoryContents(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], [TLS_HANDSHAKE_TYPE_DUMMY_2, 0, 0, 8]);
         AssertMemoryContents(Z80.HL.ToUShort(), [6, 7, 8]);
-        AssertWordInMemory("DATA_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
+        AssertWordInMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE", 8);
 
-        Run("DATA_RECEIVER.UPDATE");
-        AssertA("DATA_RECEIVER.ERROR_NO_CHANGE");
+        Run("RECORD_RECEIVER.UPDATE");
+        AssertA("RECORD_RECEIVER.ERROR_NO_CHANGE");
     }
 
     private void AssertMemoryContents(int address, byte[] expectedContents)

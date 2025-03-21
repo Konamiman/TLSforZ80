@@ -1,8 +1,8 @@
-    public DATA_RECEIVER.INIT
-    public DATA_RECEIVER.UPDATE
-    public DATA_RECEIVER.TLS_RECORD_TYPE.APP_DATA
-    public DATA_RECEIVER.HANDSHAKE_HEADER
-    public DATA_RECEIVER.HANDSHAKE_MSG_SIZE
+    public RECORD_RECEIVER.INIT
+    public RECORD_RECEIVER.UPDATE
+    public RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
+    public RECORD_RECEIVER.HANDSHAKE_HEADER
+    public RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
     extrn DATA_TRANSPORT.RECEIVE
     extrn DATA_TRANSPORT.HAS_IN_DATA
     extrn DATA_TRANSPORT.IS_REMOTELY_CLOSED
@@ -14,7 +14,7 @@ name: equ code
     public name
     endm
 
-    module DATA_RECEIVER
+    module RECORD_RECEIVER
 
 def_error ERROR_NO_CHANGE, 0
 def_error ERROR_CONNECTION_CLOSED, 1
@@ -98,7 +98,7 @@ INIT_FOR_NEXT_RECORD:
 ;                132: Last part of a split handshake message available
 ;            HL = Record address (if A>=128)
 ;            BC = Record length (if A=128), full message length (if A=129), fragmenet length (if A>=130)
-;                 If A>=130, see DATA_RECEIVER.HANDSHAKE_MSG_SIZE for the actual full message size
+;                 If A>=130, see RECORD_RECEIVER.HANDSHAKE_MSG_SIZE for the actual full message size
 ;            D  = Record type (if A=128)
 ;            E  = Handshake type (if A>=129)
 
