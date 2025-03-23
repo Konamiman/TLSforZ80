@@ -1,6 +1,6 @@
 ﻿using Konamiman.TlsForZ80.TlsClient.Cryptography;
-using Konamiman.TlsForZ80.TlsClient.DataTransport;
 using Konamiman.TlsForZ80.TlsClient.Enums;
+using Konamiman.TLSforZ80.TlsClient;
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -31,8 +31,6 @@ namespace Konamiman.TlsForZ80.TlsClient;
 /// </summary>
 internal class DataReceiver
 {
-    private IDataTransport dataTransport;
-
     /// <summary>
     /// The data decryptor to use. Needs to be set as soon as the keys are negotiated.
     /// </summary>
@@ -66,132 +64,52 @@ internal class DataReceiver
     /// </summary>
     public HandshakeType HandshakeType { get; private set; } = HandshakeType.None;
 
-    readonly byte[] recordData = new byte[16384];
-
-    int totalSize = 5;
-
-    int receivedSize = 0;
-
-    byte[] nextHandshakeData;
-
-    byte[] handshakeData;
-
-    int handshakeSize;
-
-    int receivedHandshakeSize;
-
-    bool receivingHandshake = false;
-
-    public DataReceiver(IDataTransport dataTransport)
+    public DataReceiver()
     {
-        this.dataTransport = dataTransport;
+        Z80Runner.RecordReceiverInit(0xC000, 0x3000);
     }
 
     public void Run()
     {
         if(IsComplete) {
-            InitForNewRecord();
             IsComplete = false;
         }
 
-        if(nextHandshakeData != null) {
-            //Simulate the reception of a record whose content is the next handshake data fragment
-            RecordType = RecordContentType.Handshake;
-            Array.Copy(nextHandshakeData, recordData, nextHandshakeData.Length);
-            totalSize = receivedSize = nextHandshakeData.Length;
-            nextHandshakeData = null;
+        var (receiverStatus, receivedData, receivedRecordType, receivedHandshakeType) = Z80Runner.RecordReceiverUpdate();
+        if(receiverStatus == 0) {
+            return;
         }
-        else {
-            var receivedNow = dataTransport.Receive(recordData, receivedSize, totalSize - receivedSize);
-            receivedSize += receivedNow;
-            if(receivedSize < totalSize) {
-                return;
-            }
+        if(receiverStatus < 128) {
+            throw new ProtocolError(AlertCode.decodeError, $"Record receiver error: {receiverStatus}");
         }
 
-        if(RecordType is RecordContentType.None) {
-            // We have a full record header
-
-            RecordType = (RecordContentType)recordData[0];
-            //var legacyVersion = recordData.ExtractBigEndianUint16(1);
-            totalSize = recordData.ExtractBigEndianUint16(3);
-
-            if(totalSize > 16384 + (RecordType is RecordContentType.ApplicationData ? 256 : 0)) {
-                throw new ProtocolError(AlertCode.recordOverflow, $"Received a record with a declared size of {totalSize}");
-            }
-
-            receivedSize = dataTransport.Receive(recordData, 0, totalSize);
-            if(receivedSize < totalSize) {
-                return;
-            }
-        }
-
-        // We have a full record
-
-        if(RecordType is RecordContentType.ApplicationData) {
-            (RecordType, totalSize) = Encryption.Decrypt(recordData, recordData, totalSize);
-        }
-
-        if(RecordType is not RecordContentType.Handshake) {
-            if(receivingHandshake) {
-                throw new ProtocolError(AlertCode.unexpectedMessage, $"Received a record of type {RecordType} in the middle of the reception of a fragmented handshake message");
-            }
-
-            Data = recordData.Take(totalSize).ToArray();
+        if(receiverStatus == 128) { //Non-handshake record
             IsComplete = true;
-            return;
+            Data = receivedData;
+            RecordType = (RecordContentType)receivedRecordType;
         }
-
-        // We have received a handshake message fragment
-
-        if(!receivingHandshake) {
-            //It was the first fragment
-            if(recordData.Length < 4) {
-                throw new ProtocolError(AlertCode.decodeError, "Received a first handshake fragment smaller than 4 bytes");
-            }
-
-            receivingHandshake = true;
-            HandshakeHeader = recordData.Take(4).ToArray();
-            HandshakeType = (HandshakeType)recordData[0];
-            handshakeSize = recordData.ExtractBigEndianUint24(1);
-            handshakeData = recordData.Skip(4).Take(totalSize-4).ToArray();
-            receivedHandshakeSize = handshakeData.Length;
+        else if(receiverStatus == 129) { //Full handshake message
+            IsComplete = true;
+            Data = receivedData;
+            RecordType = RecordContentType.Handshake;
+            HandshakeType = (HandshakeType)receivedHandshakeType;
+            (HandshakeHeader, _) = Z80Runner.RecordReceiverGetHandhsakeData();
+        }
+        else if(receiverStatus == 130) { //First part of split handshake message
+            Data = receivedData;
+            RecordType = RecordContentType.Handshake;
+            HandshakeType = (HandshakeType)receivedHandshakeType;
+            (HandshakeHeader, _) = Z80Runner.RecordReceiverGetHandhsakeData();
+        }
+        else if(receiverStatus == 131) { //Next part of split handshake message
+            Data = [..Data, ..receivedData];
+        }
+        else if(receiverStatus == 132) { //Last part of split handshake message
+            IsComplete = true;
+            Data = [..Data, ..receivedData];
         }
         else {
-            handshakeData = [.. handshakeData, .. recordData.Take(totalSize)];
-            receivedHandshakeSize += totalSize;
+            throw new Exception($"Unexpected status code from record receiver: {receiverStatus}");
         }
-
-        if(receivedHandshakeSize < handshakeSize) {
-            InitForNewRecord();
-            return;
-        }
-
-        // The handshake message is complete
-
-        IsComplete = true;
-        receivingHandshake = false;
-
-        if(receivedHandshakeSize == handshakeSize) {
-            Data = handshakeData.ToArray();
-            nextHandshakeData = null;
-            receivedHandshakeSize = 0;
-            return;
-        }
-
-        // There was a fragment of the next handshake message(s) at the end of the record
-
-        Data = handshakeData.Take(handshakeSize).ToArray();
-        nextHandshakeData = handshakeData.Skip(handshakeSize).ToArray();
-    }
-
-    private void InitForNewRecord()
-    {
-        if(!receivingHandshake) {
-            HandshakeType = HandshakeType.None;
-        }
-        RecordType = RecordContentType.None;
-        receivedSize = 0;
-        totalSize = 5;
     }
 }

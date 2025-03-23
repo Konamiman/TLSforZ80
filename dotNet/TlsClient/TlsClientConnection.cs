@@ -22,13 +22,13 @@ public class TlsClientConnection
     /// <param name="hostName">The host name to send in a server_name extension in the ClientHello message, if null no server_name extension will be sent.</param>
     public TlsClientConnection(IDataTransport dataTransport, byte[] privateKey, string hostName)
     {
+        Z80Runner.Init();
+
         this.dataTransport = dataTransport;
-        this.dataReceiver = new DataReceiver(dataTransport);
+        this.dataReceiver = new DataReceiver();
         state = ConnectionState.Initial;
         this.hostName = hostName;
         this.encryption = null;
-
-        Z80Runner.Init();
     }
 
     /// <summary>

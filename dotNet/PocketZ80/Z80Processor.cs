@@ -71,7 +71,7 @@ namespace Konamiman.PocketZ80
                     }
                 }
 
-                if(watcher.ElapsedMilliseconds > 3000) {
+                if(!Debugger.IsAttached && watcher.ElapsedMilliseconds > 3000) {
                     watcher.Stop();
                     throw new Exception("Z80 code took too long to execute");
                 }

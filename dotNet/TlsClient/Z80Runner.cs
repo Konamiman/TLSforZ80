@@ -10,7 +10,7 @@ namespace Konamiman.TLSforZ80.TlsClient;
 internal class Z80Runner
 {
     const int BUFFER_IN = 0x8000;
-    const int BUFFER_OUT = 0xC000;
+    const int BUFFER_OUT = 0xA000;
 
     private static Z80Processor Z80;
 
@@ -377,6 +377,32 @@ internal class Z80Runner
         return Z80.CF == 0 ? GetOutputBuffer(32) : null;
     }
 
+    public static void RecordReceiverInit(ushort bufferAddress, ushort bufferLength)
+    {
+        Z80.HL = bufferAddress.ToShort();
+        Z80.BC = bufferLength.ToShort();
+        Run("RECORD_RECEIVER.INIT");
+    }
+
+    public static (byte status, byte[] data, byte recordType, byte handhskaType) RecordReceiverUpdate()
+    {
+        Run("RECORD_RECEIVER.UPDATE");
+        var status = Z80.A;
+        if(status < 128) {
+            return (status, null, 0, 0);
+        }
+
+        var data = GetOutputBuffer(Z80.BC, Z80.HL.ToUShort()).ToArray();
+        return (status, data, Z80.D, Z80.E);
+    }
+
+    public static (byte[] handshakeHeader, int handshakeSize) RecordReceiverGetHandhsakeData()
+    {
+        var handshakeHeader = GetOutputBuffer(4, symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"]);
+        var handshakeSize = GetWordFromMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE");
+        return (handshakeHeader, handshakeSize);
+    }
+
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)
     {
         if(data.Length > 0) {
@@ -387,6 +413,12 @@ internal class Z80Runner
     private static byte[] GetOutputBuffer(int length, int address = BUFFER_OUT)
     {
         return Z80.Memory.Skip(address).Take(length).ToArray();
+    }
+
+    private static int GetWordFromMemory(string addressName)
+    {
+        var address = symbols[addressName];
+        return Z80.Memory[address] + (Z80.Memory[address + 1] << 8);
     }
 
     private static void Run(string symbol)
