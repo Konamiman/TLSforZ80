@@ -27,6 +27,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Z80", "Z80", "{36C1F52C-DA4
 		..\z80\record_encryption.asm = ..\z80\record_encryption.asm
 		..\z80\server_hello.asm = ..\z80\server_hello.asm
 		..\z80\sha256.asm = ..\z80\sha256.asm
+		..\z80\tls_connection.asm = ..\z80\tls_connection.asm
 		..\z80\unapi.asm = ..\z80\unapi.asm
 	EndProjectSection
 EndProject
