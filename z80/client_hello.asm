@@ -14,6 +14,7 @@ PUBLIC_KEY_SIZE: equ 64
 ;            DE = Address of public key
 ;    Output: HL = Address of CLIENT_HELLO.MESSAGE
 ;            BC = Value of CLIENT_HELLO.SIZE
+;            The message will be preceded by a proper 4 byte handshake message header.
 
 INIT:
     push hl
@@ -87,6 +88,10 @@ INIT:
     ld hl,EXTENSIONS_END-MESSAGE
     add hl,bc
     ld (SIZE),hl
+    ld a,h
+    ld (HANDSHAKE_HEADER+2),a
+    ld a,l
+    ld (HANDSHAKE_HEADER+3),a
 
     push hl
     pop bc
@@ -97,6 +102,12 @@ INIT:
 SIZE: dw 0
 
     ;--- ClientHello packet bytes
+
+    ;* Handshake message header
+
+HANDSHAKE_HEADER:
+    db 1    ;ClientHello
+    db 0,0,0
 
     ;* Header
 
