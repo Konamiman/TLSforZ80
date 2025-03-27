@@ -4,6 +4,7 @@
     public TLS_CONNECTION.CAN_RECEIVE
     public TLS_CONNECTION.SEND
     public TLS_CONNECTION.RECEIVE
+    public TLS_CONNECTION.CLOSE
     public TLS_CONNECTION.ERROR_CODE
     public TLS_CONNECTION.RECORD_ERROR
     public TLS_CONNECTION.ALERT_SENT
@@ -15,6 +16,7 @@
     extrn P256.GENERATE_SHARED_KEY
     extrn DATA_TRANSPORT.SEND
     extrn DATA_TRANSPORT.IS_REMOTELY_CLOSED
+    extrn DATA_TRANSPORT.HAS_IN_DATA
     extrn DATA_TRANSPORT.CLOSE
     extrn SHA256.RUN
     extrn RECORD_ENCRYPTION.ENCRYPT
@@ -32,6 +34,7 @@
     root P256.GENERATE_SHARED_KEY
     root DATA_TRANSPORT.SEND
     root DATA_TRANSPORT.IS_REMOTELY_CLOSED
+    root DATA_TRANSPORT.HAS_IN_DATA
     root DATA_TRANSPORT.CLOSE
     root SHA256.RUN
     root RECORD_ENCRYPTION.ENCRYPT
@@ -65,11 +68,18 @@ APP_DATA: equ 23
 
     module ERROR
 
-ALERT_RECEIVED: equ 1
-ALERT_SENT: equ 2
+LOCAL_CLOSE: equ 1
+ALERT_RECEIVED: equ 2
 RECEIVED_RECORD_ERROR: equ 3
 HELLO_RETRY_REQUEST_RECEIVED: equ 4
 CONNECTION_CLOSED_IN_HANDSHAKE: equ 5
+
+    endmod
+
+    module ALERT_CODE
+
+CLOSE_NOTIFY: equ 0
+USER_CANCELED: equ 90
 
     endmod
 
@@ -119,8 +129,24 @@ UPDATE:
     ;    (and possibly partially closed)
 
 UPDATE_ON_ESTABLISHED_STATE:
+    call DATA_TRANSPORT.HAS_IN_DATA
+    jr nz,.NO_IN_DATA
 
     ;WIP
+
+.NO_IN_DATA:
+    call DATA_TRANSPORT.IS_REMOTELY_CLOSED
+    ld a,(STATE)
+    ret nc
+
+    cp STATE.ESTABLISHED
+    ld a,STATE.REMOTELY_CLOSED
+    jr z,.UPDATE_STATE
+    ld a,STATE.FULL_CLOSED
+.UPDATE_STATE:
+    ld (STATE),a
+
+    ret
 
 
     ;--- Update when the connection is in the initial state:
@@ -173,19 +199,14 @@ CHECK_CLOSED_DURING_HANDSHAKE:
     ret nc
 
     ld a,ERROR.CONNECTION_CLOSED_IN_HANDSHAKE
-    ld (ERROR_CODE),a
-    call DATA_TRANSPORT.CLOSE
-    ld a,STATE.FULL_CLOSED
-    ld (STATE),a
-    scf
-    ret
+    jp CLOSE_CORE
 
 
 ;--- Can application data be sent?
 ;    Output: Cy=1 if yes
 
 CAN_SEND:
-    ld a,(STATE)
+    call UPDATE
     cp STATE.ESTABLISHED
     scf
     ret z
@@ -200,7 +221,7 @@ CAN_SEND:
 ;    Output: Cy=1 if yes
 
 CAN_RECEIVE:
-    ld a,(STATE)
+    call UPDATE
     cp STATE.ESTABLISHED
     scf
     ret z
@@ -217,6 +238,10 @@ CAN_RECEIVE:
 ;    Output: Cy = 1 if error
 
 SEND:
+    call CAN_SEND
+    ccf
+    ret c
+
     ;WIP
     ret
 
@@ -227,7 +252,55 @@ SEND:
 ;    Output: BC = Actual length
 
 RECEIVE:
+    call CAN_RECEIVE
+    jr c,.DO
+    ld bc,0
+    ret
+
+.DO:
     ;WIP
+    ret
+
+
+;--- Locally close the connection
+
+CLOSE:
+    call UPDATE
+    ld a,ERROR_CODE.LOCAL_CLOSE
+    ;jp CLOSE_CORE
+
+
+;--- Close the connection
+;    Input: A = Error code
+
+CLOSE_CORE:
+    ld (ERROR_CODE),a
+
+    ld a,(STATE)
+    ld b,a
+    or a    ;cp STATE.INITIAL
+    jr z,.NO_SEND_ALERT
+    ld a,(ALERT_SENT)
+    or a
+    jr nz,.NO_SEND_ALERT
+
+    ld a,b
+    cp STATE.ESTABLISHED
+    ld a,ALERT_CODE.USER_CANCELED
+    jr c,.DO_SEND_ALERT
+    ld a,ALERT_CODE.CLOSE_NOTIFY
+.DO_SEND_ALERT
+    call SEND_ALERT
+
+.NO_SEND_ALERT:
+    call DATA_TRANSPORT.CLOSE
+
+    call DATA_TRANSPORT.IS_REMOTELY_CLOSED
+    ld a,STATE.FULL_CLOSED
+    jr c,.SET_STATE
+    ld a,STATE.LOCALLY_CLOSED
+.SET_STATE:
+    ld (STATE),a
     ret
 
 
@@ -296,24 +369,18 @@ SEND_RECORD:
     ret
 
 
-;--- Send an alert message and close the connection
+;--- Send an alert message
 ;    Input:  A = Message code
-;    Output: A = FULL_CLOSED state
 
-SEND_ALERT_AND_CLOSE:
+SEND_ALERT:
     ld (ALERT_RECORD.DESCRIPTION),a
     ld (ALERT_SENT),a
     ld a,RECORD_TYPE.ALERT
     ld hl,ALERT_RECORD.LEVEL
     ld bc,2
     call SEND_RECORD
-
-    call DATA_TRANSPORT.CLOSE
-
     ld a,ERROR.ALERT_SENT
     ld (ERROR_CODE),a
-    ld a,STATE.FULL_CLOSED
-    ld (STATE),a
     ret
 
 
