@@ -44,7 +44,8 @@ public class DataReceiverTests
         foreach(var file in files) {
             var assemblyResult = AssemblySourceProcessor.Assemble(File.ReadAllText(file), new AssemblyConfiguration() {
                 BuildType = BuildType.Relocatable,
-                GetStreamForInclude = fileName => File.OpenRead(Path.Combine(Path.GetDirectoryName(file), fileName))
+                GetStreamForInclude = fileName => File.OpenRead(Path.Combine(Path.GetDirectoryName(file), fileName)),
+                PredefinedSymbols = [("DEBUGGING", 0xFFFF)]
             });
 
             if(assemblyResult.HasErrors) {
