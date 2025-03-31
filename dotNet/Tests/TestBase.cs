@@ -16,7 +16,6 @@ public abstract class TestBase
     protected const byte TLS_HANDSHAKE_TYPE_DUMMY = 199;
     protected const byte TLS_HANDSHAKE_TYPE_DUMMY_2 = 200;
 
-
     protected static Z80Processor Z80;
 
     protected static Dictionary<string, ushort> symbols = [];
@@ -121,11 +120,14 @@ public abstract class TestBase
     protected byte[] tcpDataRemainingFromPreviousReceive = null;
     protected bool tcpConnectionIsRemotelyClosed;
 
+    protected List<byte> tcpDataSent = [];
+
     [SetUp]
-    public void SetUp()
+    public virtual void SetUp()
     {
         tcpConnectionIsRemotelyClosed = false;
         ReceivedTcpData = [];
+        tcpDataSent.Clear();
         hasMoreReceivedTcpData = false;
         tcpDataRemainingFromPreviousReceive = null;
         badAuthTag = false;
@@ -191,6 +193,11 @@ public abstract class TestBase
             }
             Z80.ExecuteRet();
         };
+        Z80.ExecutionHooks[symbols["DATA_TRANSPORT.SEND"]] = () => {
+            tcpDataSent.AddRange(ReadFromMemory(Z80.HL.ToUShort(), Z80.BC.ToUShort()));
+            Z80.CF = 0; // Alway asssume success
+            Z80.ExecuteRet();
+        };
 
         Z80.HL = 0x8000.ToShort();
         Z80.BC = 1024;
@@ -199,8 +206,17 @@ public abstract class TestBase
 
     protected void AssertMemoryContents(int address, byte[] expectedContents)
     {
-        var actualContents = Z80.Memory.Skip(address).Take(expectedContents.Length).ToArray();
-        Assert.That(actualContents, Is.EqualTo(expectedContents));
+        Assert.That(ReadFromMemory(address, expectedContents.Length), Is.EqualTo(expectedContents));
+    }
+
+    protected byte[] ReadFromMemory(int address, int length)
+    {
+        return Z80.Memory.Skip(address).Take(length).ToArray();
+    }
+
+    protected void WriteToMemory(int address, byte[] contents)
+    {
+        Array.Copy(contents, 0, Z80.Memory, address, contents.Length);
     }
 
     protected void AssertCarrySet()

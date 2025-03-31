@@ -196,11 +196,6 @@ UPDATE_ON_INITIAL_STATE:
     dec hl
     dec hl
     dec hl  ;HL = Handshake message header
-    ld bc,(CLIENT_HELLO.SIZE)
-    inc bc
-    inc bc
-    inc bc
-    inc bc  ;BC = Record size including handshake message header
     call SEND_HANDSHAKE_RECORD
 
     ld a,3
@@ -340,6 +335,18 @@ CLOSE_CORE:
 ;            BC = Message length
 
 SEND_HANDSHAKE_RECORD:
+    push hl
+    inc hl
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld c,(hl)
+    pop hl
+    inc bc
+    inc bc
+    inc bc
+    inc bc  ;Include handshake message header in record data size
+
     ld a,(STATE)
     cp STATE.ESTABLISHED
     jr nc,.SEND
@@ -369,11 +376,11 @@ SEND_RECORD:
     ld a,(FLAGS)
     push hl
     and FLAGS.HAS_KEYS
+    ld a,d
     jr z,.SEND
 
     ; We have encryption keys, so let's encrypt the message
 
-    ld a,d
     push hl
     pop de  ;We overwrite the original data with the encrypted version
     call RECORD_ENCRYPTION.ENCRYPT
