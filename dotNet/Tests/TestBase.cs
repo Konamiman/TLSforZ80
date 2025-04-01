@@ -18,7 +18,7 @@ public abstract class TestBase
 
     protected static Z80Processor Z80;
 
-    protected static Dictionary<string, ushort> symbols = [];
+    protected Dictionary<string, ushort> symbols = [];
     protected byte encryptedRecordType;
     protected bool badAuthTag;
     protected bool recordAllZeros;
@@ -250,7 +250,7 @@ public abstract class TestBase
         return Z80.Memory[address] + (Z80.Memory[address + 1] << 8);
     }
 
-    protected static void Run(string symbol)
+    protected void Run(string symbol)
     {
         Z80.Start(symbols[symbol]);
     }
