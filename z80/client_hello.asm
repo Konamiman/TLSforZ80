@@ -1,7 +1,14 @@
     public CLIENT_HELLO.INIT
     public CLIENT_HELLO.MESSAGE
+    public CLIENT_HELLO.MESSAGE_HEADER
     public CLIENT_HELLO.SIZE
     public CLIENT_HELLO.SESSION_ID
+
+    ifdef DEBUGGING
+
+    public CLIENT_HELLO.SERVER_NAME
+
+    endif
 
     module CLIENT_HELLO
 
@@ -89,9 +96,9 @@ INIT:
     add hl,bc
     ld (SIZE),hl
     ld a,h
-    ld (HANDSHAKE_HEADER+2),a
+    ld (MESSAGE_HEADER+2),a
     ld a,l
-    ld (HANDSHAKE_HEADER+3),a
+    ld (MESSAGE_HEADER+3),a
 
     push hl
     pop bc
@@ -105,7 +112,7 @@ SIZE: dw 0
 
     ;* Handshake message header
 
-HANDSHAKE_HEADER:
+MESSAGE_HEADER:
     db 1    ;ClientHello
     db 0,0,0
 

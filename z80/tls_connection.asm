@@ -14,11 +14,12 @@
     public TLS_CONNECTION.SEND_RECORD
     public TLS_CONNECTION.SEND_HANDSHAKE_RECORD
     public TLS_CONNECTION.SEND_ALERT_RECORD
+    public TLS_CONNECTION.STATE
     endif
 
 
     extrn CLIENT_HELLO.INIT
-    extrn CLIENT_HELLO.MESSAGE
+    extrn CLIENT_HELLO.MESSAGE_HEADER
     extrn CLIENT_HELLO.SIZE
     extrn P256.GENERATE_KEY_PAIR
     extrn P256.GENERATE_SHARED_KEY
@@ -37,7 +38,7 @@
     module TLS_CONNECTION
 
     root CLIENT_HELLO.INIT
-    root CLIENT_HELLO.MESSAGE
+    root CLIENT_HELLO.MESSAGE_HEADER
     root CLIENT_HELLO.SIZE
     root P256.GENERATE_KEY_PAIR
     root P256.GENERATE_SHARED_KEY
@@ -191,11 +192,7 @@ UPDATE_ON_INITIAL_STATE:
     ld a,1
     ld (RECORD_HEADER.LEGACY_VERSION+1),a
 
-    ld hl,(CLIENT_HELLO.MESSAGE)
-    dec hl
-    dec hl
-    dec hl
-    dec hl  ;HL = Handshake message header
+    ld hl,CLIENT_HELLO.MESSAGE_HEADER
     call SEND_HANDSHAKE_RECORD
 
     ld a,3
@@ -291,13 +288,16 @@ RECEIVE:
 ;--- Locally close the connection
 
 CLOSE:
-    call UPDATE
+    ld a,(STATE)
+    or a    ;cp STATE.INITIAL
+    call nz,UPDATE
     ld a,ERROR_CODE.LOCAL_CLOSE
     ;jp CLOSE_CORE
 
 
 ;--- Close the connection
-;    Input: A = Error code
+;    Input:  A = Error code
+;    Output: A = New state
 
 CLOSE_CORE:
     ld (ERROR_CODE),a

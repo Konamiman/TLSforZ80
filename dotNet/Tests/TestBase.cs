@@ -119,6 +119,7 @@ public abstract class TestBase
     protected bool hasMoreReceivedTcpData;
     protected byte[] tcpDataRemainingFromPreviousReceive = null;
     protected bool tcpConnectionIsRemotelyClosed;
+    protected bool tcpConnectionIsLocallyClosed;
 
     protected List<byte> tcpDataSent = [];
 
@@ -126,6 +127,7 @@ public abstract class TestBase
     public virtual void SetUp()
     {
         tcpConnectionIsRemotelyClosed = false;
+        tcpConnectionIsLocallyClosed = false;
         ReceivedTcpData = [];
         tcpDataSent.Clear();
         hasMoreReceivedTcpData = false;
@@ -198,6 +200,10 @@ public abstract class TestBase
             Z80.CF = 0; // Alway asssume success
             Z80.ExecuteRet();
         };
+        Z80.ExecutionHooks[symbols["DATA_TRANSPORT.CLOSE"]] = () => {
+            tcpConnectionIsLocallyClosed = true;
+            Z80.ExecuteRet();
+        };
 
         Z80.HL = 0x8000.ToShort();
         Z80.BC = 1024;
@@ -239,6 +245,11 @@ public abstract class TestBase
         Assert.That(Z80.A, Is.EqualTo(symbols[errorCodeName]));
     }
 
+    protected void AssertA(int value)
+    {
+        Assert.That(Z80.A, Is.EqualTo(value));
+    }
+
     protected void AssertWordInMemory(string addressName, int expected)
     {
         Assert.That(GetWordFromMemory(addressName), Is.EqualTo(expected));
@@ -248,6 +259,11 @@ public abstract class TestBase
     {
         var address = symbols[addressName];
         return Z80.Memory[address] + (Z80.Memory[address + 1] << 8);
+    }
+
+    protected void AssertByteInMemory(string addressName, int expected)
+    {
+        Assert.That(Z80.Memory[symbols[addressName]], Is.EqualTo(expected));
     }
 
     protected void Run(string symbol)
