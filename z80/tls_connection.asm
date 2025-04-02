@@ -34,6 +34,7 @@
     extrn RECORD_RECEIVER.HANDSHAKE_HEADER
     extrn RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
     extrn SERVER_HELLO.PARSE
+    extrn RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
 
     module TLS_CONNECTION
 
@@ -53,6 +54,7 @@
     root RECORD_RECEIVER.HANDSHAKE_HEADER
     root RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
     root SERVER_HELLO.PARSE
+    root RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
 
     .relab
 
@@ -131,10 +133,10 @@ INIT:
     ld (ALERT_SENT),a
     ld (ALERT_RECEIVED),a
     ld (FLAGS),a
-    call SHA256.RUN ;With A=0, to initialize, for the hash of the transmitted handshake bytes
 
     push hl
     push bc
+    call SHA256.RUN ;With A=0, to initialize, for the hash of the transmitted handshake bytes
     call P256.GENERATE_KEY_PAIR
     ex de,hl
     pop bc
@@ -209,8 +211,23 @@ UPDATE_ON_HANDSHAKE_STATE:
     call CHECK_CLOSED_DURING_HANDSHAKE
     ret c
 
+    call RECORD_RECEIVER.UPDATE
+    or a    ;cp RECORD_RECEIVER.ERROR_NO_CHANGE
+    jr z,.RETURN_STATE
+
+    cp RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
+    jr c,.RECORD_RECEIVER_ERROR
+
     ;WIP
 
+RECORD_RECEIVER_ERROR:
+    ld (SUB_ERROR_CODE),a
+    ld a,ERROR_CODE.RECEIVED_RECORD_DECODE_ERROR
+    ld (ERROR_CODE),a
+
+    ;WIP: Send alert and close connection
+
+.RETURN_STATE:
     ld a,(STATE)
     ret
 
@@ -411,6 +428,7 @@ SEND_RECORD:
 ;    Input:  A = Message code
 
 SEND_ALERT_RECORD:
+    ;TODO: Warning level if userCancelled or closeNotify
     ld (ALERT_RECORD.DESCRIPTION),a
     ld (ALERT_SENT),a
     ld a,RECORD_TYPE.ALERT

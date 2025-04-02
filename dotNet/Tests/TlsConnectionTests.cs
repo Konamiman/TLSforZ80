@@ -120,6 +120,23 @@ public class TlsConnectionTests : TestBase
         Assert.That(ReadFromMemory(symbols["CLIENT_HELLO.SERVER_NAME"], serverNameBytes.Length), Is.EqualTo(serverNameBytes));
     }
 
+    [Test]
+    public void InitSendsPublicKeyToClientHello()
+    {
+        short publicKeyAddressReceivedByClientHelloInit = 0;
+        Z80.ExecutionHooks[symbols["CLIENT_HELLO.INIT"]] = () => {
+            publicKeyAddressReceivedByClientHelloInit = Z80.DE;
+            Z80.ExecuteRet();
+        };
+        Z80.ExecutionHooks[symbols["P256.GENERATE_KEY_PAIR"]] = () => {
+            Z80.HL = 0x1234;
+            Z80.ExecuteRet();
+        };
+
+        RunInit();
+        Assert.That(publicKeyAddressReceivedByClientHelloInit, Is.EqualTo(0x1234));
+    }
+
     private void RunInit(string serverName = null)
     {
         if(serverName == null) {
