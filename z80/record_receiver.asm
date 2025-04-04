@@ -273,7 +273,7 @@ EXTRACT_NEXT_HANDSHAKE_MESSAGE:
     
     ld a,(hl)
     or a
-    ld a,ERROR_HANDSHAKE_MSG_TOO_LONG
+    ld a,ERROR_HANDSHAKE_MSG_TOO_LONG   ;TODO: Support messages >64k
     jp nz,INIT_FOR_NEXT_RECORD
 
     inc hl

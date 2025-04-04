@@ -105,6 +105,12 @@ INVALID_KEY_UPDATE: equ 18
 
 CLOSE_NOTIFY: equ 0
 USER_CANCELED: equ 90
+BAD_RECORD_MAC: equ 20
+RECORD_OVERFLOW: equ 22
+DECODE_ERROR: equ 50
+DECRYPT_ERROR: equ 51
+INTERNAL_ERROR: equ 80
+UNEXPECTED_MESSAGE: equ 10
 
     endmod
 
@@ -216,16 +222,9 @@ UPDATE_ON_HANDSHAKE_STATE:
     jr z,.RETURN_STATE
 
     cp RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
-    jr c,.RECORD_RECEIVER_ERROR
+    jp c,HANDLE_RECORD_RECEIVER_ERROR
 
     ;WIP
-
-RECORD_RECEIVER_ERROR:
-    ld (SUB_ERROR_CODE),a
-    ld a,ERROR_CODE.RECEIVED_RECORD_DECODE_ERROR
-    ld (ERROR_CODE),a
-
-    ;WIP: Send alert and close connection
 
 .RETURN_STATE:
     ld a,(STATE)
@@ -306,36 +305,44 @@ RECEIVE:
 
 CLOSE:
     ld a,(STATE)
+    ld b,a
     or a    ;cp STATE.INITIAL
-    call nz,UPDATE
+    ld a,ALERT_CODE.CLOSE_NOTIFY
+    jp z,CLOSE_CORE
+
+    ld a,b
+    cp STATE.ESTABLISHED
     ld a,ERROR_CODE.LOCAL_CLOSE
+    ld bc,ALERT_CODE.USER_CANCELED ;B = seconday error code = 0
+    jr c,SEND_ALERT_AND_CLOSE
+    ld c,ALERT_CODE.CLOSE_NOTIFY
+    ;jp SEND_ALERT_AND_CLOSE
+
+
+;--- Send an alert and close the connection
+;    Input:  A = Error code
+;            B = Secondary error code
+;            C = Alert code to send
+;    Output: A = New state
+
+SEND_ALERT_AND_CLOSE:
+    push bc
+    ld a,c
+    call SEND_ALERT_RECORD
+    pop bc
     ;jp CLOSE_CORE
 
 
 ;--- Close the connection
 ;    Input:  A = Error code
+;            B = Secondary error code
 ;    Output: A = New state
 
 CLOSE_CORE:
     ld (ERROR_CODE),a
-
-    ld a,(STATE)
-    ld b,a
-    or a    ;cp STATE.INITIAL
-    jr z,.NO_SEND_ALERT
-    ld a,(ALERT_SENT)
-    or a
-    jr nz,.NO_SEND_ALERT
-
     ld a,b
-    cp STATE.ESTABLISHED
-    ld a,ALERT_CODE.USER_CANCELED
-    jr c,.DO_SEND_ALERT
-    ld a,ALERT_CODE.CLOSE_NOTIFY
-.DO_SEND_ALERT:
-    call SEND_ALERT_RECORD
-
-.NO_SEND_ALERT:
+    ld (SUB_ERROR_CODE),a
+   
     call DATA_TRANSPORT.CLOSE
 
     call DATA_TRANSPORT.IS_REMOTELY_CLOSED
@@ -345,6 +352,35 @@ CLOSE_CORE:
 .SET_STATE:
     ld (STATE),a
     ret
+
+
+;--- Handle an error received by RECORD_RECEIVER_UPDATE
+;    Input: A = Error code
+
+HANDLE_RECORD_RECEIVER_ERROR:
+    ld b,a ;Secondary error code
+
+    dec a ;First error has code 1
+    ld hl,RECORD_ERROR_TO_ALERT_CODE
+    ld e,a
+    ld d,0
+    add hl,de
+    ld c,(hl) ;Alert code
+
+    ld a,ERROR_CODE.RECEIVED_RECORD_DECODE_ERROR
+    jp SEND_ALERT_AND_CLOSE
+
+    ; Mapping of record receive errors to alert codes
+    ; This depends on the values assigned to error codes in RECORD_RECEIVER !!
+
+RECORD_ERROR_TO_ALERT_CODE:
+    db ALERT_CODE.INTERNAL_ERROR  ;ERROR_CONNECTION_CLOSED
+    db ALERT_CODE.INTERNAL_ERROR  ;ERROR_RECORD_TOO_LONG 
+    db ALERT_CODE.BAD_RECORD_MAC  ;ERROR_BAD_AUTH_TAG
+    db ALERT_CODE.DECODE_ERROR    ;ERROR_MSG_ALL_ZEROS
+    db ALERT_CODE.RECORD_OVERFLOW ;ERROR_RECORD_OVER_16K
+    db ALERT_CODE.INTERNAL_ERROR  ;ERROR_HANDSHAKE_MSG_TOO_LONG
+    db ALERT_CODE.UNEXPECTED_MESSAGE ;ERROR_NON_HANDSHAKE_RECEIVED
 
 
 ;--- Send a handshake record
