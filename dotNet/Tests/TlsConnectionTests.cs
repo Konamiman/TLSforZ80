@@ -137,6 +137,88 @@ public class TlsConnectionTests : TestBase
         Assert.That(publicKeyAddressReceivedByClientHelloInit, Is.EqualTo(0x1234));
     }
 
+    [Test]
+    public void ChangeCipherSpecIsIgnoredDuringHandshake()
+    {
+        RunInit();
+        Run("TLS_CONNECTION.UPDATE");
+
+        ReceivedTcpData = [
+            [
+               TLS_RECORD_TYPE_CHANGE_CIHPER_SPEC,
+               3, 3,
+               0, 1, //Length
+               34
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_HANDSHAKE);
+    }
+
+    [Test]
+    public void UnexpectedRecordCausesErrorDuringHandshake()
+    {
+        RunInit();
+        Run("TLS_CONNECTION.UPDATE");
+
+        ReceivedTcpData = [
+            [
+               34,
+               3, 3,
+               0, 1, //Length
+               89
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_LOCALLY_CLOSED);
+        AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE"]);
+        AssertByteInMemory("TLS_CONNECTION.SUB_ERROR_CODE", 34);
+    }
+
+    [Test]
+    public void AlertRecordCausesConnectionCloseDuringHandshake()
+    {
+        RunInit();
+        Run("TLS_CONNECTION.UPDATE");
+
+        ReceivedTcpData = [
+            [
+               TLS_RECORD_TYPE_ALERT,
+               3, 3,
+               0, 2, // Length
+               1, 34
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_LOCALLY_CLOSED);
+        AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.ALERT_RECEIVED"]);
+        AssertByteInMemory("TLS_CONNECTION.ALERT_RECEIVED", 34);
+    }
+
+    [Test]
+    public void AlertRecordOfTypeCloseNotifyCausesFullCloseDuringHandshake()
+    {
+        RunInit();
+        Run("TLS_CONNECTION.UPDATE");
+
+        ReceivedTcpData = [
+            [
+               TLS_RECORD_TYPE_ALERT,
+               3, 3,
+               0, 2, // Length
+               1, 0  // 0 = Close notify
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_FULLY_CLOSED);
+        AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.ALERT_RECEIVED"]);
+        AssertByteInMemory("TLS_CONNECTION.ALERT_RECEIVED", 0);
+    }
+
     private void RunInit(string serverName = null)
     {
         if(serverName == null) {

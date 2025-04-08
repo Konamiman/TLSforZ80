@@ -9,6 +9,9 @@
     public TLS_CONNECTION.SUB_ERROR_CODE
     public TLS_CONNECTION.ALERT_SENT
     public TLS_CONNECTION.ALERT_RECEIVED
+    public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE
+    public TLS_CONNECTION.ERROR_CODE.ALERT_RECEIVED
+    public TLS_CONNECTION.ERROR_CODE.ALERT_RECEIVED
 
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_RECORD
@@ -35,6 +38,8 @@
     extrn RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
     extrn SERVER_HELLO.PARSE
     extrn RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
+    extrn RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
+    extrn RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
 
     module TLS_CONNECTION
 
@@ -55,6 +60,8 @@
     root RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
     root SERVER_HELLO.PARSE
     root RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
+    root RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
+    root RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
 
     .relab
 
@@ -224,11 +231,45 @@ UPDATE_ON_HANDSHAKE_STATE:
     cp RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
     jp c,HANDLE_RECORD_RECEIVER_ERROR
 
-    ;WIP
+    cp RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
+    jr z,.HANDLE_FULL_HANDSHAKE_MESSAGE
+
+    cp RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
+    jr nc,.HANDLE_SPLIT_HANDSHAKE_MESSAGE
+
+    ;We received a record that is not a handshake message:
+    ;valid record types are alert and change cipher-spec
+
+    ld a,d
+    cp RECORD_TYPE.CHANGE_CIHPER_SPEC
+    jr z,.RETURN_STATE
+
+    cp RECORD_TYPE.ALERT
+    jr z,HANDLE_ALERT_RECEIVED
+
+    ld b,a
+    ld a,ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE
+    ld c,ALERT_CODE.UNEXPECTED_MESSAGE
+    jp SEND_ALERT_AND_CLOSE
 
 .RETURN_STATE:
     ld a,(STATE)
     ret
+
+
+    ;* Full handshake message received while in handshake stage
+
+.HANDLE_FULL_HANDSHAKE_MESSAGE:
+    ;WIP
+    ret
+
+
+    ;* Split handshake message received while in handshake stage
+
+.HANDLE_SPLIT_HANDSHAKE_MESSAGE:
+    ;WIP
+    ret
+
 
 
     ;--- Check if the data transport connection was closed during the handshake stage
@@ -326,10 +367,12 @@ CLOSE:
 ;    Output: A = New state
 
 SEND_ALERT_AND_CLOSE:
+    push af
     push bc
     ld a,c
     call SEND_ALERT_RECORD
     pop bc
+    pop af
     ;jp CLOSE_CORE
 
 
@@ -349,6 +392,39 @@ CLOSE_CORE:
     ld a,STATE.FULL_CLOSED
     jr c,.SET_STATE
     ld a,STATE.LOCALLY_CLOSED
+.SET_STATE:
+    ld (STATE),a
+    ret
+
+
+;--- Handle the reception of an alert record
+;    Input: HL = Record data address
+
+HANDLE_ALERT_RECEIVED:
+    inc hl
+    ld a,(hl)
+    ld (ALERT_RECEIVED),a
+    cp ALERT_CODE.CLOSE_NOTIFY
+    jr z,.HANDLE_CLOSE_NOTIFY
+
+    ; Error received: record it and close the connection.
+
+    ld a,ERROR_CODE.ALERT_RECEIVED
+    ld b,0
+    jp CLOSE_CORE
+
+    ; Close notification received:
+    ; In established state, change to "remotely closed";
+    ; othewrwise change to "fully closed".
+
+.HANDLE_CLOSE_NOTIFY:
+    ld a,ERROR_CODE.ALERT_RECEIVED
+    ld (ERROR_CODE),a
+    ld a,(STATE)
+    cp STATE.ESTABLISHED
+    ld a,STATE.REMOTELY_CLOSED
+    jr z,.SET_STATE
+    ld a,STATE.FULL_CLOSED
 .SET_STATE:
     ld (STATE),a
     ret

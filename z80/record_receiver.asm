@@ -97,7 +97,7 @@ INIT_FOR_NEXT_RECORD:
 ;                131: Next part of a split handshake message available
 ;                132: Last part of a split handshake message available
 ;            HL = Record address (if A>=128)
-;            BC = Record length (if A=128), full message length (if A=129), fragmenet length (if A>=130)
+;            BC = Record length (if A=128), full message length (if A=129), fragment length (if A>=130)
 ;                 If A>=130, see RECORD_RECEIVER.HANDSHAKE_MSG_SIZE for the actual full message size
 ;            D  = Record type (if A=128)
 ;            E  = Handshake type (if A>=129)
@@ -230,7 +230,6 @@ HANDLE_NON_HANDSHAKE_RECORD:
     ld bc,5
     add hl,bc ;Skip record header
     ld bc,(RECORD_SIZE)
-    ld a,d
 
     ld a,ERROR_FULL_RECORD_AVAILABLE
     push hl

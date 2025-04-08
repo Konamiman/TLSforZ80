@@ -9,6 +9,7 @@ namespace Konamiman.TLSforZ80.Tests;
 
 public abstract class TestBase
 {
+    protected const byte TLS_RECORD_TYPE_CHANGE_CIHPER_SPEC = 20;
     protected const byte TLS_RECORD_TYPE_ALERT = 21;
     protected const byte TLS_RECORD_TYPE_HANDSHAKE = 22;
     protected const byte TLS_RECORD_TYPE_APP_DATA = 23;
@@ -213,6 +214,11 @@ public abstract class TestBase
     protected void AssertMemoryContents(int address, byte[] expectedContents)
     {
         Assert.That(ReadFromMemory(address, expectedContents.Length), Is.EqualTo(expectedContents));
+    }
+
+    protected void AssertMemoryContents(string symbol, byte[] expectedContents)
+    {
+        Assert.That(ReadFromMemory(symbols[symbol], expectedContents.Length), Is.EqualTo(expectedContents));
     }
 
     protected byte[] ReadFromMemory(int address, int length)
