@@ -231,6 +231,18 @@ public abstract class TestBase
         Array.Copy(contents, 0, Z80.Memory, address, contents.Length);
     }
 
+    protected void WriteWordToMemory(int address, ushort value, bool highEndian = false)
+    {
+        if(highEndian) {
+            Z80.Memory[address] = (byte)(value >> 8);
+            Z80.Memory[address + 1] = (byte)(value & 0xFF);
+        }
+        else {
+            Z80.Memory[address] = (byte)(value & 0xFF);
+            Z80.Memory[address + 1] = (byte)(value >> 8);
+        }
+    }
+
     protected void AssertCarrySet()
     {
         Assert.That(Z80.CF, Is.EqualTo(1));

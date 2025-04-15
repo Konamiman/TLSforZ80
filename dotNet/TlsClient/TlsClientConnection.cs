@@ -1,8 +1,10 @@
-﻿using Konamiman.TlsForZ80.TlsClient.Cryptography;
+﻿using Konamiman.PocketZ80;
+using Konamiman.TlsForZ80.TlsClient.Cryptography;
 using Konamiman.TlsForZ80.TlsClient.DataStructures;
 using Konamiman.TlsForZ80.TlsClient.DataTransport;
 using Konamiman.TlsForZ80.TlsClient.Enums;
 using Konamiman.TLSforZ80.TlsClient;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
@@ -547,6 +549,8 @@ public class TlsClientConnection
                 ServerName = hostName
             };
             var clientHelloBytes = clientHello.ToByteArray();
+            Debug.WriteLine("*** ClientHello:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(clientHelloBytes));
             transmittedHandshakeBytes = [];
             SendHandshakeMessage(HandshakeType.ClientHello, clientHelloBytes);
 
@@ -574,6 +578,8 @@ public class TlsClientConnection
 
             ServerHelloMessage serverHello;
             try {
+                Debug.WriteLine("*** ServerHello:");
+                Debug.WriteLine(NumberUtils.BytesToHexDump(receivedRecord));
                 serverHello = ServerHelloMessage.Parse(receivedRecord);
             }
             catch {
@@ -596,10 +602,21 @@ public class TlsClientConnection
             keys = new TrafficKeys();
 
             var sharedSecret = Z80Runner.P256GenerateSharedSecret(serverHello.PublicKey.Skip(1).ToArray());
+            Debug.WriteLine("*** Shared secret:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(sharedSecret));
+
+
+            Debug.WriteLine("*** Transmitted handshake bytes hash:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(Z80Runner.CalculateSHA256(transmittedHandshakeBytes.ToArray())));
 
             keys.ComputeHandshakeKeys(sharedSecret, Z80Runner.CalculateSHA256(transmittedHandshakeBytes.ToArray()));
             encryption = new RecordEncryption(keys);
             dataReceiver.Encryption = encryption;
+
+            Debug.WriteLine("*** Client key:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(keys.ClientKey));
+            Debug.WriteLine("*** Server key:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(keys.ServerKey));
         }
 
         else if(receivedHandshakeType is HandshakeType.Finished) {

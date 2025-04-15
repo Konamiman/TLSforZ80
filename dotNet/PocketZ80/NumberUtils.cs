@@ -134,5 +134,22 @@
         {
             return (ushort)value;
         }
+
+        public static string BytesToHexDump(byte[] bytes)
+        {
+            if(bytes == null || bytes.Length == 0)
+                return "";
+
+            var lines = bytes
+                .Select((b, i) => new { Byte = b, Index = i })
+                .GroupBy(x => x.Index / 16)
+                .Select(g => " " + string.Join(",", g.Select(x => $"0x{x.Byte:X2}")))
+                .ToList();  // Convert to List to enable indexing
+
+            // Add commas to all lines except the last one
+            return string.Join("\n",
+                lines.Select((line, index) =>
+                    index < lines.Count - 1 ? line + "," : line));
+        }
     }
 }

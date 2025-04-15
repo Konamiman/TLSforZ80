@@ -11,13 +11,20 @@
     public TLS_CONNECTION.ALERT_RECEIVED
     public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE
     public TLS_CONNECTION.ERROR_CODE.ALERT_RECEIVED
-    public TLS_CONNECTION.ERROR_CODE.ALERT_RECEIVED
+    public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE
+    public TLS_CONNECTION.ERROR_CODE.SECOND_SERVER_HELLO_RECEIVED
+    public TLS_CONNECTION.ERROR_CODE.RECEIVED_RECORD_DECODE_ERROR
+    public TLS_CONNECTION.ERROR_CODE.INVALID_SERVER_HELLO
+    public TLS_CONNECTION.ALERT_CODE.UNEXPECTED_MESSAGE
 
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_RECORD
     public TLS_CONNECTION.SEND_HANDSHAKE_RECORD
     public TLS_CONNECTION.SEND_ALERT_RECORD
     public TLS_CONNECTION.STATE
+    public TLS_CONNECTION.FLAGS
+    public TLS_CONNECTION.HANDSHAKE_HASH
+    public TLS_CONNECTION.SHARED_SECRET
     endif
 
 
@@ -40,6 +47,16 @@
     extrn RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
     extrn RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
     extrn RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
+    extrn SERVER_HELLO.PARSE
+    extrn SERVER_HELLO.PUBLIC_KEY
+    extrn HKDF.DERIVE_HS_KEYS
+    extrn HKDF.DERIVE_AP_KEYS
+    extrn HKDF.COMPUTE_FINISHED_KEY
+    extrn HKDF.UPDATE_TRAFFIC_KEY
+    extrn HKDF.CLIENT_KEY
+    extrn HKDF.SERVER_KEY
+    extrn HKDF.CLIENT_IV
+    extrn HKDF.SERVER_IV
 
     module TLS_CONNECTION
 
@@ -62,6 +79,16 @@
     root RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
     root RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
     root RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
+    root SERVER_HELLO.PARSE
+    root SERVER_HELLO.PUBLIC_KEY
+    root HKDF.DERIVE_HS_KEYS
+    root HKDF.DERIVE_AP_KEYS
+    root HKDF.COMPUTE_FINISHED_KEY
+    root HKDF.UPDATE_TRAFFIC_KEY
+    root HKDF.CLIENT_KEY
+    root HKDF.SERVER_KEY
+    root HKDF.CLIENT_IV
+    root HKDF.SERVER_IV
 
     .relab
 
@@ -82,6 +109,12 @@ CHANGE_CIHPER_SPEC: equ 20
 ALERT: equ 21
 HANDSHAKE: equ 22
 APP_DATA: equ 23
+
+    endmod
+
+    module MESSAGE_TYPE
+
+SERVER_HELLO: equ 2
 
     endmod
 
@@ -118,6 +151,9 @@ DECODE_ERROR: equ 50
 DECRYPT_ERROR: equ 51
 INTERNAL_ERROR: equ 80
 UNEXPECTED_MESSAGE: equ 10
+HANDSHAKE_FAILURE: equ 40
+PROTOCOL_VERSION: equ 70
+ILLEGAL_PARAMETER: equ 47
 
     endmod
 
@@ -156,6 +192,8 @@ INIT:
     pop hl
     call CLIENT_HELLO.INIT
 
+    ld a,2
+    ld (ALERT_RECORD.LEVEL),a
     ret
 
 
@@ -245,7 +283,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     jr z,.RETURN_STATE
 
     cp RECORD_TYPE.ALERT
-    jr z,HANDLE_ALERT_RECEIVED
+    jp z,HANDLE_ALERT_RECEIVED
 
     ld b,a
     ld a,ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE
@@ -258,18 +296,121 @@ UPDATE_ON_HANDSHAKE_STATE:
 
 
     ;* Full handshake message received while in handshake stage
+    ;  HL = Message address
+    ;  BC = Message length
+    ;  E  = Handshake message type
 
 .HANDLE_FULL_HANDSHAKE_MESSAGE:
-    ;WIP
-    ret
+    push de
+    call INCLUDE_HANDSHAKE_MESSAGE_IN_HASH
+    pop de
+
+    ld a,e
+    cp MESSAGE_TYPE.SERVER_HELLO
+    jr z,.HANDLE_SERVER_HELLO
+    
+    ;WIP - Handle other types of messages
+
+    jp .SEND_UNEXPECTED_MESSAGE_ALERT
+
+
+    ;* ServerHello received
+
+.HANDLE_SERVER_HELLO:
+    ld a,(FLAGS)
+    and FLAGS.HAS_KEYS
+    jr z,.HANDLE_SERVER_HELLO_2
+
+    ; We already have keys, thus this is a second ServerHello
+    ld a,ERROR_CODE.SECOND_SERVER_HELLO_RECEIVED
+    ld b,0
+    ld c,ALERT_CODE.UNEXPECTED_MESSAGE
+    jp SEND_ALERT_AND_CLOSE
+
+.HANDLE_SERVER_HELLO_2:
+    call SERVER_HELLO.PARSE
+    or a
+    jr z,.HANDLE_SERVER_HELLO_3
+
+    ; Error parsing ServerHello
+    ld hl,SERVER_HELLO_ERROR_TO_ALERT_CODE
+    ld e,a
+    ld d,0
+    add hl,de
+    dec hl     ;First error code is 1
+    ld c,(hl)  ;Alert code
+    ld b,a     ;Secondary error code
+    ld a,ERROR_CODE.INVALID_SERVER_HELLO
+    jp SEND_ALERT_AND_CLOSE
+
+.HANDLE_SERVER_HELLO_3:
+
+    ; All good, let's derive the handshake keys
+    
+    ld hl,SERVER_HELLO.PUBLIC_KEY
+    ld de,SHARED_SECRET
+    push de
+    call P256.GENERATE_SHARED_KEY ;TODO: Handle error
+
+    ld a,2
+    ld de,HANDSHAKE_HASH
+    push de
+    call SHA256.RUN ;Complete the running hash of all the handshake messages transmitted
+
+    pop hl
+    pop ix
+    call HKDF.DERIVE_HS_KEYS
+
+    ld a,(FLAGS)
+    or FLAGS.HAS_KEYS
+    ld (FLAGS),a
+
+    jp .RETURN_STATE
+
+
+    ; Jump here when receiving an unexpected handshake message
+    ; Input: E = Handhsake message type
+
+.SEND_UNEXPECTED_MESSAGE_ALERT:
+    ld a,ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE
+    ld b,e
+    ld c,ALERT_CODE.UNEXPECTED_MESSAGE
+    jp SEND_ALERT_AND_CLOSE
 
 
     ;* Split handshake message received while in handshake stage
 
 .HANDLE_SPLIT_HANDSHAKE_MESSAGE:
+
     ;WIP
     ret
 
+
+    ; Include the message in the SHA256 running hash
+    ; Input: HL = Message address
+    ;        BC = Message length
+    ;        Message header in RECORD_RECEIVER.HANDSHAKE_HEADER
+    ; Preserves HL, BC
+
+INCLUDE_HANDSHAKE_MESSAGE_IN_HASH:
+    push hl
+    push bc
+
+    ld a,1
+    ld hl,RECORD_RECEIVER.HANDSHAKE_HEADER
+    ld bc,4
+    call SHA256.RUN
+
+    pop bc
+    pop hl
+    push hl
+    push bc
+    ld a,1
+    call SHA256.RUN
+    pop bc
+    pop hl
+
+    ret
 
 
     ;--- Check if the data transport connection was closed during the handshake stage
@@ -459,6 +600,18 @@ RECORD_ERROR_TO_ALERT_CODE:
     db ALERT_CODE.UNEXPECTED_MESSAGE ;ERROR_NON_HANDSHAKE_RECEIVED
 
 
+    ; Mapping of ServerHello parsing errors to alert codes
+
+SERVER_HELLO_ERROR_TO_ALERT_CODE:
+    db ALERT_CODE.DECODE_ERROR      ;Invalid format
+    db ALERT_CODE.HANDSHAKE_FAILURE ;HelloRetryRequest received
+    db ALERT_CODE.PROTOCOL_VERSION  ;Not TLS 1.3
+    db ALERT_CODE.ILLEGAL_PARAMETER ;CipherSuite is not TLS_AES_128_GCM_SHA256
+    db ALERT_CODE.HANDSHAKE_FAILURE ;No KeyShare extension for the cipher suite received
+    db ALERT_CODE.HANDSHAKE_FAILURE ;Mismatching session id echo (not the same as CLIENT_HELLO.SESSION_ID)
+    db ALERT_CODE.HANDSHAKE_FAILURE ;Bad legacy compression method
+
+
 ;--- Send a handshake record
 ;    Input:  HL = Message header address
 ;            BC = Message length
@@ -584,6 +737,9 @@ LEVEL: db 2    ;Always fatal error
 DESCRIPTION: db 0
 
     endmod
+
+HANDSHAKE_HASH: ds 32
+SHARED_SECRET: ds 32
 
     endmod
 

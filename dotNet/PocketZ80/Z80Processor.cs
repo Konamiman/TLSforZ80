@@ -54,6 +54,12 @@ namespace Konamiman.PocketZ80
             {
                 if(ExecutionHooks.ContainsKey(PC)) {
                     ExecutionHooks[PC]();
+                    if(retExecuted) {
+                        retExecuted = false;
+                    }
+                    else {
+                        Execute(Memory[PC++]);
+                    }
                 }
                 else {
                     switch(PC) {
@@ -124,6 +130,7 @@ namespace Konamiman.PocketZ80
             unchecked { SP = (short)0xFFFF; }
         }
 
+        bool retExecuted = false;
         public void ExecuteRet()
         {
             var sp = (ushort)SP;
@@ -131,6 +138,8 @@ namespace Konamiman.PocketZ80
 
             PC = (ushort)newPC;
             SP += 2;
+
+            retExecuted = true;
         }
     }
 }

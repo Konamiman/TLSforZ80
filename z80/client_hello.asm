@@ -7,6 +7,7 @@
     ifdef DEBUGGING
 
     public CLIENT_HELLO.SERVER_NAME
+    public CLIENT_HELLO.SIZE
 
     endif
 
