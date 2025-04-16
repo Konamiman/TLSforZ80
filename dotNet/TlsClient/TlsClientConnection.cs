@@ -606,16 +606,16 @@ public class TlsClientConnection
             Debug.WriteLine(NumberUtils.BytesToHexDump(sharedSecret));
 
 
-            Debug.WriteLine("*** Transmitted handshake bytes hash:");
+            Debug.WriteLine("*** Transmitted handshake bytes hash after ServerHello:");
             Debug.WriteLine(NumberUtils.BytesToHexDump(Z80Runner.CalculateSHA256(transmittedHandshakeBytes.ToArray())));
 
             keys.ComputeHandshakeKeys(sharedSecret, Z80Runner.CalculateSHA256(transmittedHandshakeBytes.ToArray()));
             encryption = new RecordEncryption(keys);
             dataReceiver.Encryption = encryption;
 
-            Debug.WriteLine("*** Client key:");
+            Debug.WriteLine("*** Client HS key:");
             Debug.WriteLine(NumberUtils.BytesToHexDump(keys.ClientKey));
-            Debug.WriteLine("*** Server key:");
+            Debug.WriteLine("*** Server HS key:");
             Debug.WriteLine(NumberUtils.BytesToHexDump(keys.ServerKey));
         }
 
@@ -628,10 +628,17 @@ public class TlsClientConnection
                 throw new ProtocolError(AlertCode.certificateRequired, $"Finished message received before Certificate");
             }
 
+            Debug.WriteLine("*** Server finished:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(receivedRecord));
+
             var serverTransmittedBytes = transmittedHandshakeBytes.Take(transmittedHandshakeBytes.Count - dataReceiver.HandshakeHeader.Length - receivedRecordLength);
             var serverHandshakeHash = hashAlgorithm.ComputeHash(serverTransmittedBytes.ToArray());
+            Debug.WriteLine("*** Server handshake hash:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(serverHandshakeHash));
             hmacAlgorithm.Key = keys.ComputeFinishedKey(ofServer: true);
             var serverVerifyData = hmacAlgorithm.ComputeHash(serverHandshakeHash);
+            Debug.WriteLine("*** HMAC server key:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(hmacAlgorithm.Key));
             var serverFinishedOk = serverVerifyData.SequenceEqual(receivedRecord);
 
             if(!serverFinishedOk) {
@@ -639,8 +646,14 @@ public class TlsClientConnection
             }
 
             var handshakeHash = hashAlgorithm.ComputeHash(transmittedHandshakeBytes.ToArray());
+            Debug.WriteLine("*** Client handshake hash:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(handshakeHash));
             hmacAlgorithm.Key = keys.ComputeFinishedKey(ofServer: false);
+            Debug.WriteLine("*** HMAC client key:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(hmacAlgorithm.Key));
             var verifyData = hmacAlgorithm.ComputeHash(handshakeHash);
+            Debug.WriteLine("*** Local finished data:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(verifyData));
 
             if(ServerRequestedCertificate) {
                 SendHandshakeMessage(HandshakeType.Certificate, [0, 0, 0, 0]);
@@ -652,10 +665,18 @@ public class TlsClientConnection
 
             keys.ComputeApplicationKeys(handshakeHash);
 
+            Debug.WriteLine("*** Client AP key:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(keys.ClientKey));
+            Debug.WriteLine("*** Server AP key:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(keys.ServerKey));
+
             State = ConnectionState.Established;
         }
 
         else if(receivedHandshakeType is HandshakeType.Certificate) {
+            Debug.WriteLine("*** Certificate received:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(receivedRecord));
+
             if(keys is null) {
                 throw new ProtocolError(AlertCode.unexpectedMessage, $"Certificate message received before ServerHello");
             }
@@ -686,12 +707,18 @@ public class TlsClientConnection
         }
 
         else if(receivedHandshakeType is HandshakeType.CertificateVerify) {
+            Debug.WriteLine("*** CertificateVerify received:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(receivedRecord));
+
             // :shrug:
         }
         else if(receivedHandshakeType is HandshakeType.EncryptedExtensions) {
             if(keys is null) {
                 throw new ProtocolError(AlertCode.unexpectedMessage, $"EncryptedExtensions message received before ServerHello");
             }
+
+            Debug.WriteLine("*** EncryptedExtensions received:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(receivedRecord));
 
             var extensionsLength = receivedRecord.ExtractBigEndianUint16(0);
             var index = 2;
@@ -714,6 +741,9 @@ public class TlsClientConnection
             }
         }
         else if(receivedHandshakeType is HandshakeType.CertificateRequest) {
+            Debug.WriteLine("*** CertificateRequest received:");
+            Debug.WriteLine(NumberUtils.BytesToHexDump(receivedRecord));
+
             if(keys is null) {
                 throw new ProtocolError(AlertCode.unexpectedMessage, $"CertificateRequest message received before ServerHello");
             }

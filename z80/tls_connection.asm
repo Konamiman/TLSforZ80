@@ -10,13 +10,14 @@
     public TLS_CONNECTION.ALERT_SENT
     public TLS_CONNECTION.ALERT_RECEIVED
     public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE
+    public TLS_CONNECTION.ERROR_CODE.UNALLOWED_HANDSHAKE_TYPE_BEFORE_SERVER_HELLO
     public TLS_CONNECTION.ERROR_CODE.ALERT_RECEIVED
     public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE
     public TLS_CONNECTION.ERROR_CODE.SECOND_SERVER_HELLO_RECEIVED
     public TLS_CONNECTION.ERROR_CODE.RECEIVED_RECORD_DECODE_ERROR
     public TLS_CONNECTION.ERROR_CODE.INVALID_SERVER_HELLO
     public TLS_CONNECTION.ALERT_CODE.UNEXPECTED_MESSAGE
-
+    
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_RECORD
     public TLS_CONNECTION.SEND_HANDSHAKE_RECORD
@@ -25,6 +26,9 @@
     public TLS_CONNECTION.FLAGS
     public TLS_CONNECTION.HANDSHAKE_HASH
     public TLS_CONNECTION.SHARED_SECRET
+    public TLS_CONNECTION.FINISHED_KEY
+    public TLS_CONNECTION.FINISHED_VALUE
+    public TLS_CONNECTION.COMPARE_BLOCK
     endif
 
 
@@ -38,6 +42,8 @@
     extrn DATA_TRANSPORT.HAS_IN_DATA
     extrn DATA_TRANSPORT.CLOSE
     extrn SHA256.RUN
+    extrn SHA256.SAVE_STATE
+    extrn SHA256.RESTORE_STATE
     extrn RECORD_ENCRYPTION.ENCRYPT
     extrn RECORD_RECEIVER.UPDATE
     extrn RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
@@ -57,6 +63,7 @@
     extrn HKDF.SERVER_KEY
     extrn HKDF.CLIENT_IV
     extrn HKDF.SERVER_IV
+    extrn HMAC.RUN
 
     module TLS_CONNECTION
 
@@ -70,6 +77,8 @@
     root DATA_TRANSPORT.HAS_IN_DATA
     root DATA_TRANSPORT.CLOSE
     root SHA256.RUN
+    root SHA256.SAVE_STATE
+    root SHA256.RESTORE_STATE
     root RECORD_ENCRYPTION.ENCRYPT
     root RECORD_RECEIVER.UPDATE
     root RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
@@ -89,6 +98,7 @@
     root HKDF.SERVER_KEY
     root HKDF.CLIENT_IV
     root HKDF.SERVER_IV
+    root HMAC.RUN
 
     .relab
 
@@ -115,6 +125,11 @@ APP_DATA: equ 23
     module MESSAGE_TYPE
 
 SERVER_HELLO: equ 2
+ENCRYPTED_EXTENSIONS: equ 8
+CERTIFICATE: equ 11
+CERTIFICATE_REQUEST: equ 13
+CERTIFICATE_VERIFY: equ 15
+FINISHED: equ 20
 
     endmod
 
@@ -130,14 +145,11 @@ UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE: equ 7
 UNEXPECTED_HANDSHAKE_TYPE_AFTER_HANDSHAKE: equ 8
 SECOND_SERVER_HELLO_RECEIVED: equ 9
 INVALID_SERVER_HELLO: equ 10
-FINISHED_BEFORE_SERVER_HELLO: equ 11
+UNALLOWED_HANDSHAKE_TYPE_BEFORE_SERVER_HELLO: equ 11
 FINISHED_BEFORE_CERTIFICATE: equ 12
 BAD_FINISHED: equ 13
-CERTIFICATE_BEFORE_SERVER_HELLO: equ 14
-ENCRYPTED_EXTENSIONS_BEFORE_SERVER_HELLO: equ 15
-BAD_MAX_FRAGMENT_LEGTH: equ 16
-CERTIFICATE_REQUESTED_BEFORE_SERVER_HELLO: equ 17
-INVALID_KEY_UPDATE: equ 18
+BAD_MAX_FRAGMENT_LEGTH: equ 14
+INVALID_KEY_UPDATE: equ 15
 
     endmod
 
@@ -273,7 +285,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     jr z,.HANDLE_FULL_HANDSHAKE_MESSAGE
 
     cp RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
-    jr nc,.HANDLE_SPLIT_HANDSHAKE_MESSAGE
+    jp nc,.HANDLE_SPLIT_HANDSHAKE_MESSAGE
 
     ;We received a record that is not a handshake message:
     ;valid record types are alert and change cipher-spec
@@ -302,15 +314,34 @@ UPDATE_ON_HANDSHAKE_STATE:
 
 .HANDLE_FULL_HANDSHAKE_MESSAGE:
     push de
-    call INCLUDE_HANDSHAKE_MESSAGE_IN_HASH
+    ld a,e
+    cp MESSAGE_TYPE.FINISHED
+    call nz,INCLUDE_HANDSHAKE_MESSAGE_IN_HASH
     pop de
 
     ld a,e
     cp MESSAGE_TYPE.SERVER_HELLO
     jr z,.HANDLE_SERVER_HELLO
-    
-    ;WIP - Handle other types of messages
 
+    ; Any message except ServerHello is only allowed
+    ; after we have generated the handshake keys.
+    ld a,(FLAGS)
+    and FLAGS.HAS_KEYS
+    jp z,.SEND_UNALLOWED_MESSAGE_ALERT
+    ld a,e
+
+    cp MESSAGE_TYPE.ENCRYPTED_EXTENSIONS
+    jr z,.HANDLE_ENCRYPTED_EXTENSIONS
+    cp MESSAGE_TYPE.CERTIFICATE
+    jr z,.HANDLE_CERTIFICATE
+    cp MESSAGE_TYPE.CERTIFICATE_REQUEST
+    jr z,.HANDLE_CERTIFICATE_REQUEST
+    cp MESSAGE_TYPE.CERTIFICATE_VERIFY
+    jr z,.HANDLE_CERTIFICATE_VERIFY
+    cp MESSAGE_TYPE.FINISHED
+    jr z,.HANDLE_FINISHED
+
+    ld a,ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE
     jp .SEND_UNEXPECTED_MESSAGE_ALERT
 
 
@@ -352,6 +383,8 @@ UPDATE_ON_HANDSHAKE_STATE:
     push de
     call P256.GENERATE_SHARED_KEY ;TODO: Handle error
 
+    call SHA256.SAVE_STATE ;We'll need to keep on hashing for the Finished messages
+
     ld a,2
     ld de,HANDSHAKE_HASH
     push de
@@ -361,6 +394,8 @@ UPDATE_ON_HANDSHAKE_STATE:
     pop ix
     call HKDF.DERIVE_HS_KEYS
 
+    call SHA256.RESTORE_STATE ;Restore here (not before) because HKDF does its own hashing too
+
     ld a,(FLAGS)
     or FLAGS.HAS_KEYS
     ld (FLAGS),a
@@ -368,11 +403,136 @@ UPDATE_ON_HANDSHAKE_STATE:
     jp .RETURN_STATE
 
 
-    ; Jump here when receiving an unexpected handshake message
+    ;* Any other type of message except Finished received:
+    ;  We just update flags if needed and then move on.
+    ;  We completely ignore server certificates, and we can
+    ;  ignore EncryptedExtensions (in particular the
+    ;  max fragment length extension, since we're going to send
+    ;  records of at most 512 bytes anyway).
+    ;  Note that at this point we have already checked if
+    ;  handshake keys are available and have updated
+    ;  the running handshake hash.
+
+.HANDLE_CERTIFICATE_REQUEST:
+    ld d,FLAGS.CERTIFICATE_REQUESTED
+    jr .UPDATE_FLAGS
+
+.HANDLE_CERTIFICATE:
+    ld d,FLAGS.CERTIFICATE_RECEIVED
+
+.UPDATE_FLAGS:
+    ld a,(FLAGS)
+    or d
+    ld (FLAGS),a
+
+.HANDLE_ENCRYPTED_EXTENSIONS:
+.HANDLE_CERTIFICATE_VERIFY:
+    jp .RETURN_STATE
+
+
+    ;* Finished message
+
+.HANDLE_FINISHED:
+    ;TODO: If server requested a certificate, send an empty Certificate message
+
+    ld a,(FLAGS)
+    and FLAGS.CERTIFICATE_RECEIVED
+    ld a,ERROR_CODE.FINISHED_BEFORE_CERTIFICATE
+    jp z,.SEND_UNALLOWED_MESSAGE_ALERT
+
+    push bc
+    push hl
+    call SHA256.SAVE_STATE
+    ld a,2
+    ld de,HANDSHAKE_HASH
+    call SHA256.RUN
+    call SHA256.RESTORE_STATE
+    pop hl
+    pop bc
+
+    push bc
+    push hl
+    call SHA256.SAVE_STATE  ;We'll need to include the server Finished message itself later
+    ld a,2
+    ld de,FINISHED_KEY
+    scf
+    call HKDF.COMPUTE_FINISHED_KEY  ;Server finished HMAC key
+    
+    ld a,3
+    ld ix,HANDSHAKE_HASH
+    pop hl
+    pop bc
+    push bc
+    push hl
+    ld iy,FINISHED_KEY
+    ld hl,32
+    ld de,FINISHED_VALUE
+    call HMAC.RUN
+
+    call SHA256.RESTORE_STATE   ;Restore here (not before) because HKDF and HMAC do their own SHA56 hashings
+
+    pop hl  ;Received finished value
+    pop bc
+    push bc
+    push hl
+    ld de,FINISHED_VALUE    ;Computed finished value
+    call COMPARE_BLOCK
+    jr z,.SERVER_FINISHED_OK
+
+    ld a,ERROR_CODE.BAD_FINISHED
+    ld b,0
+    ld c,ALERT_CODE.DECRYPT_ERROR
+    jp SEND_ALERT_AND_CLOSE
+
+.SERVER_FINISHED_OK:
+    pop hl
+    pop bc
+    ;NOW finalize the running hash by including the server's Finished message!
+    call INCLUDE_HANDSHAKE_MESSAGE_IN_HASH
+    ld a,2
+    ld de,HANDSHAKE_HASH
+    call SHA256.RUN
+
+    ld de,FINISHED_KEY
+    or a
+    call HKDF.COMPUTE_FINISHED_KEY  ;Client finished HMAC key
+
+    ld a,3
+    ld ix,HANDSHAKE_HASH
+    ld bc,32
+    ld iy,FINISHED_KEY
+    ld hl,32
+    ld de,FINISHED_VALUE
+    call HMAC.RUN   ;Set the value of the client Finished message
+
+    ld a,RECORD_TYPE.CHANGE_CIHPER_SPEC
+    ld hl,ONE
+    ld bc,1
+    call SEND_RECORD
+
+    ld hl,FINISHED_MESSAGE
+    ld bc,FINISHED_MESSAGE_END-FINISHED_MESSAGE
+    call SEND_HANDSHAKE_RECORD
+
+    ld hl,HANDSHAKE_HASH
+    call HKDF.DERIVE_AP_KEYS 
+    
+    ;Now we have the keys for application data, the handshake has finished
+    
+    ld a,STATE.ESTABLISHED
+    ld (STATE),a
+    ret
+
+
+    ; Jump here when receiving an unallowed handshake message before ServerHello.
     ; Input: E = Handhsake message type
 
+.SEND_UNALLOWED_MESSAGE_ALERT:
+    ld a,ERROR_CODE.UNALLOWED_HANDSHAKE_TYPE_BEFORE_SERVER_HELLO
+
+    ; Here A = Error code to set, E = Handshake message type
+
 .SEND_UNEXPECTED_MESSAGE_ALERT:
-    ld a,ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE
     ld b,e
     ld c,ALERT_CODE.UNEXPECTED_MESSAGE
     jp SEND_ALERT_AND_CLOSE
@@ -703,6 +863,19 @@ SEND_ALERT_RECORD:
     ret
 
 
+;--- Compare two blocks of memory
+;    Input:  HL and DE = Blocks, BC = Size
+;    Output: Z if they are equal, NZ otherwise
+
+COMPARE_BLOCK:
+    ld a,(de)
+    inc de
+    cpi
+    ret nz  ;Not equal
+    ret po  ;End of block reached
+    jr COMPARE_BLOCK
+
+
     ;--- Data area
 
 STATE: db 0
@@ -716,6 +889,7 @@ ERROR_CODE: db 0
 ; UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE: Record type
 ; UNEXPECTED_RECORD_TYPE_AFTER_ESTABLISHED: Record type
 ; UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE: Message type
+; UNEXPECTED_HANDSHAKE_TYPE_BEFORE_SERVER_HELLO: Message type
 ; UNEXPECTED_HANDSHAKE_TYPE_AFTER_HANDSHAKE: Message type
 ; INVALID_SERVER_HELLO: Error returned by SERVER_HELLO.PARSE
 ; BAD_MAX_FRAGMENT_LEGTH: Received value of max_fragment_length
@@ -740,6 +914,16 @@ DESCRIPTION: db 0
 
 HANDSHAKE_HASH: ds 32
 SHARED_SECRET: ds 32
+FINISHED_KEY: ds 32
+
+FINISHED_MESSAGE:
+    db MESSAGE_TYPE.FINISHED
+    db 0,0,32
+FINISHED_VALUE: 
+    ds 32
+FINISHED_MESSAGE_END:
+
+ONE: db 1
 
     endmod
 

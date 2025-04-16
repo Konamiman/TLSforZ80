@@ -1,5 +1,9 @@
     public SHA256.RUN
     public SHA256.HASH_OF_EMPTY
+    public SHA256.SAVE_STATE
+    public SHA256.RESTORE_STATE
+
+    .relab
 
     module SHA256
 
@@ -26,6 +30,8 @@
 ;       SHA256 with these parameters:
 ;       A  = 2
 ;       DE = Address for the generated 32-byte hash
+;
+;    See also SAVE_STATE and RESTORE STATE.
 
 RUN:
     or	a
@@ -1292,7 +1298,59 @@ PROCESS_H_LOOP:
 _PROCESS_BLOCK_AFTER_END:
 
     ret
+
+
+    ;--- Save the current hashing state.
+    ;    This allows continuing a hashing process after having finished it:
+    ;    1. Call SAVE_STATE
+    ;    2. Call RUN with A=2
+    ;    3. Call RESTORE_STATE
+    ;    4. Keep calling RUN with A=1
+
+SAVE_STATE:
+    push hl
+    push bc
+    push de
+
+    ld hl,STATE_START
+    ld de,SAVED_STATE
+    ld bc,STATE_END-STATE_START
+    ldir
+
+    ld hl,H0
+    ld de,SAVED_H
+    ld bc,INITIAL_H_END-INITIAL_H
+    ldir
     
+    ld hl,(BUFFER_PNT)
+    ld (SAVED_BUFFER_PNT),hl
+
+.POP_RET:
+    pop de
+    pop bc
+    pop hl
+    ret
+
+
+    ;--- Restore the hashing state that was saved with SAVE_STATE.
+
+RESTORE_STATE:
+    push hl
+    push bc
+    push de
+
+    ld hl,SAVED_STATE
+    ld de,STATE_START
+    ld bc,STATE_END-STATE_START
+    ldir
+
+    ld hl,SAVED_H
+    ld de,H0
+    ld bc,INITIAL_H_END-INITIAL_H
+    ldir
+    
+    jr SAVE_STATE.POP_RET
+
 
 ;----------------------------------------
 ; Data area 
@@ -1425,6 +1483,10 @@ K:
     db 0a4h, 50h, 6ch, 0ebh
     db 0beh, 0f9h, 0a3h, 0f7h
     db 0c6h, 71h, 78h, 0f2h
+
+SAVED_STATE: ds STATE_END-STATE_START
+SAVED_H: ds INITIAL_H_END-INITIAL_H
+SAVED_BUFFER_PNT: dw 0
 
     endmod
 
