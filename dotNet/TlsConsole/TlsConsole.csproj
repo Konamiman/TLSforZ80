@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Nestor80" Version="1.3.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\TlsClient\TlsClient.csproj" />
   </ItemGroup>
 

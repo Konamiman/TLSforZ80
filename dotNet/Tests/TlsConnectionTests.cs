@@ -799,6 +799,21 @@ public class TlsConnectionTests : TestBase
             Z80.ExecuteRet();
         };
 
+        byte[] encryptedContent = null;
+        byte encryptedContentType = 0;
+        byte[] fakeAuthTag = [1, 2, 3];
+        Z80.ExecutionHooks[symbols["RECORD_ENCRYPTION.ENCRYPT"]] = () => {
+            encryptedContentType = Z80.A;
+            encryptedContent = ReadFromMemory(Z80.HL.ToUShort(), Z80.BC.ToUShort());
+
+            // Bypass encryption and add a fake auth tag
+            WriteToMemory(Z80.DE.ToUShort(), encryptedContent);
+            WriteToMemory(Z80.DE.ToUShort() + Z80.BC.ToUShort(), fakeAuthTag);
+            Z80.BC += (short)fakeAuthTag.Length;
+
+            Z80.ExecuteRet();
+        };
+
         /*
         bool handshakeContextSaved = false;
         var transmittedHandshakeBytes = new List<byte>();
@@ -864,8 +879,28 @@ public class TlsConnectionTests : TestBase
         AssertMemoryContents("HKDF.CLIENT_KEY", clientApKey);
         AssertMemoryContents("HKDF.SERVER_KEY", serverApKey);
 
-        var expectedFinishedMessageSent = RecordFromHandshakeMessage((byte)HandshakeType.Finished, localFinishedBytes);
-        Assert.That(tcpDataSent, Is.EqualTo(expectedFinishedMessageSent));
+        byte[] finishedMessage = [
+            (byte)HandshakeType.Finished,
+            0, 0, (byte)localFinishedBytes.Length,
+            ..localFinishedBytes,
+        ];
+
+        byte[] expectedTcpDataSent = [
+            TLS_RECORD_TYPE_CHANGE_CIHPER_SPEC,
+            3, 3,
+            0, 1, //Record length
+            1,
+
+            TLS_RECORD_TYPE_APP_DATA,
+            3, 3,
+            0, (byte)(finishedMessage.Length + fakeAuthTag.Length), //Record length
+            ..finishedMessage,
+            ..fakeAuthTag
+        ];
+
+        Assert.That(tcpDataSent, Is.EqualTo(expectedTcpDataSent));
+        Assert.That(encryptedContent, Is.EqualTo(finishedMessage));
+        Assert.That(encryptedContentType, Is.EqualTo(TLS_RECORD_TYPE_HANDSHAKE));
     }
 
     [Test]

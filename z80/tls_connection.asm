@@ -821,8 +821,14 @@ SEND_RECORD:
     ld a,d
     jr z,.SEND
 
+    cp RECORD_TYPE.HANDSHAKE
+    jr z,.ENCRYPT
+    cp RECORD_TYPE.APP_DATA
+    jr nz,.SEND
+
     ; We have encryption keys, so let's encrypt the message
 
+.ENCRYPT:
     push hl
     pop de  ;We overwrite the original data with the encrypted version
     call RECORD_ENCRYPTION.ENCRYPT

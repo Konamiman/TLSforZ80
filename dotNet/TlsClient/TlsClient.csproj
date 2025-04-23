@@ -8,18 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\PocketZ80\PocketZ80.csproj" />
+    <PackageReference Include="Linkstor80" Version="1.0.0" />
+    <PackageReference Include="Nestor80" Version="1.3.2.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="Assembler">
-      <HintPath>..\Assembler.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="Linker">
-      <HintPath>..\Linker.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
+    <ProjectReference Include="..\PocketZ80\PocketZ80.csproj" />
   </ItemGroup>
 
 </Project>
