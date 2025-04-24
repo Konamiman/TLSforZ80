@@ -23,9 +23,9 @@ public class TlsConnectionTests : TestBase
         byte[] data = [1, 2, 3, 4, 5];
         WriteToMemory(0xF000, data);
 
-        Z80.A = 34;
-        Z80.HL = 0xF000.ToShort();
-        Z80.BC = data.Length.ToShort();
+        Z80.Registers.A = 34;
+        Z80.Registers.HL = 0xF000.ToShort();
+        Z80.Registers.BC = data.Length.ToShort();
 
         Run("TLS_CONNECTION.SEND_RECORD");
 
@@ -36,7 +36,7 @@ public class TlsConnectionTests : TestBase
     public void TestSendPlainAlertRecord()
     {
         RunInit();
-        Z80.A = 34;
+        Z80.Registers.A = 34;
 
         Run("TLS_CONNECTION.SEND_ALERT_RECORD");
 
@@ -51,7 +51,7 @@ public class TlsConnectionTests : TestBase
         byte[] dataWithHeader = [34, 0, 0, (byte)data.Length, ..data];
         WriteToMemory(0xF000, dataWithHeader);
 
-        Z80.HL = 0xF000.ToShort();
+        Z80.Registers.HL = 0xF000.ToShort();
 
         Run("TLS_CONNECTION.SEND_HANDSHAKE_RECORD");
 
@@ -129,14 +129,19 @@ public class TlsConnectionTests : TestBase
     public void InitSendsPublicKeyToClientHello()
     {
         short publicKeyAddressReceivedByClientHelloInit = 0;
-        Z80.ExecutionHooks[symbols["CLIENT_HELLO.INIT"]] = () => {
-            publicKeyAddressReceivedByClientHelloInit = Z80.DE;
-            Z80.ExecuteRet();
-        };
-        Z80.ExecutionHooks[symbols["P256.GENERATE_KEY_PAIR"]] = () => {
-            Z80.HL = 0x1234;
-            Z80.ExecuteRet();
-        };
+
+        watcher
+            .BeforeFetchingInstructionAt("CLIENT_HELLO.INIT")
+            .Do(context => {
+                publicKeyAddressReceivedByClientHelloInit = context.Z80.Registers.DE;
+            })
+            .ExecuteRet();
+
+        watcher.BeforeFetchingInstructionAt("P256.GENERATE_KEY_PAIR")
+            .Do(context => {
+                context.Z80.Registers.HL = 0x1234;
+            })
+            .ExecuteRet();
 
         RunInit();
         Assert.That(publicKeyAddressReceivedByClientHelloInit, Is.EqualTo(0x1234));
@@ -185,10 +190,12 @@ public class TlsConnectionTests : TestBase
     [Test]
     public void RecordReceiverErrorCausesErrorDuringHandshake()
     {
-        Z80.ExecutionHooks[symbols["RECORD_RECEIVER.UPDATE"]] = () => {
-            Z80.A = 3; //Bad record MAC
-            Z80.ExecuteRet();
-        };
+        watcher
+            .BeforeFetchingInstructionAt("RECORD_RECEIVER.UPDATE")
+            .Do(context => {
+                context.Z80.Registers.A = 3; //Bad record MAC
+            })
+            .ExecuteRet();
 
         RunInit();
         Run("TLS_CONNECTION.UPDATE");
@@ -276,29 +283,16 @@ public class TlsConnectionTests : TestBase
              0x9C,0x00,0x2B,0x00,0x02,0x03,0x04
         };
 
-        Z80.ExecutionHooks[symbols["CLIENT_HELLO.INIT"]] = () => {
-            WriteToMemory(symbols["CLIENT_HELLO.MESSAGE"], clientHelloBytes);
-            WriteWordToMemory(symbols["CLIENT_HELLO.MESSAGE_HEADER"] + 2, (ushort)clientHelloBytes.Length, highEndian: true);
-            WriteWordToMemory(symbols["CLIENT_HELLO.SIZE"], (ushort)clientHelloBytes.Length);
-            Z80.HL = symbols["CLIENT_HELLO.MESSAGE"].ToShort();
-            Z80.BC = clientHelloBytes.Length.ToShort();
-            Z80.ExecuteRet();
-        };
-
-        /*var transmittedHandshakeBytes = new List<byte>();
-        Z80.ExecutionHooks[symbols["SHA256.RUN"]] = () => {
-            if(Z80.A != 1) return;
-            transmittedHandshakeBytes.AddRange(ReadFromMemory(Z80.HL, Z80.BC));
-        };*/
-
-        /*Z80.ExecutionHooks[symbols["TLS_CONNECTION.SEND_HANDSHAKE_RECORD"]] = () => {
-            var hr = ReadFromMemory(Z80.HL, Z80.BC);
-            var s = ReadFromMemory(symbols["CLIENT_HELLO.SIZE"], 2);
-        };*/
-
-        /*Z80.ExecutionHooks[symbols["SERVER_HELLO.PARSE"]] = () => {
-            var sh = ReadFromMemory(Z80.HL.ToUShort(), Z80.BC.ToUShort());
-        };*/
+        watcher
+            .BeforeFetchingInstructionAt("CLIENT_HELLO.INIT")
+            .Do(context => {
+                WriteToMemory(symbols["CLIENT_HELLO.MESSAGE"], clientHelloBytes);
+                WriteWordToMemory(symbols["CLIENT_HELLO.MESSAGE_HEADER"] + 2, (ushort)clientHelloBytes.Length, highEndian: true);
+                WriteWordToMemory(symbols["CLIENT_HELLO.SIZE"], (ushort)clientHelloBytes.Length);
+                context.Z80.Registers.HL = symbols["CLIENT_HELLO.MESSAGE"].ToShort();
+                context.Z80.Registers.BC = clientHelloBytes.Length.ToShort();
+            })
+            .ExecuteRet();
 
         ReceivedTcpData = [
             RecordFromHandshakeMessage(2, serverHelloBytes), //2 = ServerHello
@@ -307,13 +301,6 @@ public class TlsConnectionTests : TestBase
         RunInit();
         Run("TLS_CONNECTION.UPDATE");
         Run("TLS_CONNECTION.UPDATE");
-
-        /*
-        var ec = Z80.Memory[symbols["TLS_CONNECTION.ERROR_CODE"]];
-        var sec = Z80.Memory[symbols["TLS_CONNECTION.SUB_ERROR_CODE"]];
-        var als = Z80.Memory[symbols["TLS_CONNECTION.ALERT_SENT"]];
-        var hh = ReadFromMemory(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], 4);
-        */
 
         AssertByteInMemory("TLS_CONNECTION.STATE", STATE_HANDSHAKE);
         AssertA(STATE_HANDSHAKE);
@@ -422,10 +409,12 @@ public class TlsConnectionTests : TestBase
             RecordFromHandshakeMessage(2, serverHelloBytes) //2 = ServerHello
         ];
 
-        Z80.ExecutionHooks[symbols["SERVER_HELLO.PARSE"]] = () => {
-            Z80.A = 4; //Illegal parameter
-            Z80.ExecuteRet();
-        };
+        watcher
+            .BeforeFetchingInstructionAt("SERVER_HELLO.PARSE")
+            .Do(context => {
+                context.Z80.Registers.A = 4; //Illegal parameter
+            })
+            .ExecuteRet();
 
         Run("TLS_CONNECTION.UPDATE");
         Run("TLS_CONNECTION.UPDATE");
@@ -790,59 +779,32 @@ public class TlsConnectionTests : TestBase
             RecordFromHandshakeMessage((byte)HandshakeType.Finished, serverFinishedBytes),
         ];
 
-        Z80.ExecutionHooks[symbols["CLIENT_HELLO.INIT"]] = () => {
-            WriteToMemory(symbols["CLIENT_HELLO.MESSAGE"], clientHelloBytes);
-            WriteWordToMemory(symbols["CLIENT_HELLO.MESSAGE_HEADER"] + 2, (ushort)clientHelloBytes.Length, highEndian: true);
-            WriteWordToMemory(symbols["CLIENT_HELLO.SIZE"], (ushort)clientHelloBytes.Length);
-            Z80.HL = symbols["CLIENT_HELLO.MESSAGE"].ToShort();
-            Z80.BC = clientHelloBytes.Length.ToShort();
-            Z80.ExecuteRet();
-        };
+        watcher
+            .BeforeFetchingInstructionAt("CLIENT_HELLO.INIT")
+            .Do(watcher => {
+                WriteToMemory(symbols["CLIENT_HELLO.MESSAGE"], clientHelloBytes);
+                WriteWordToMemory(symbols["CLIENT_HELLO.MESSAGE_HEADER"] + 2, (ushort)clientHelloBytes.Length, highEndian: true);
+                WriteWordToMemory(symbols["CLIENT_HELLO.SIZE"], (ushort)clientHelloBytes.Length);
+                Z80.Registers.HL = symbols["CLIENT_HELLO.MESSAGE"].ToShort();
+                Z80.Registers.BC = clientHelloBytes.Length.ToShort();
+            })
+            .ExecuteRet();
 
         byte[] encryptedContent = null;
         byte encryptedContentType = 0;
         byte[] fakeAuthTag = [1, 2, 3];
-        Z80.ExecutionHooks[symbols["RECORD_ENCRYPTION.ENCRYPT"]] = () => {
-            encryptedContentType = Z80.A;
-            encryptedContent = ReadFromMemory(Z80.HL.ToUShort(), Z80.BC.ToUShort());
+        watcher
+            .BeforeFetchingInstructionAt("RECORD_ENCRYPTION.ENCRYPT")
+            .Do(watcher => {
+                encryptedContentType = Z80.Registers.A;
+                encryptedContent = ReadFromMemory(Z80.Registers.HL.ToUShort(), Z80.Registers.BC.ToUShort());
 
-            // Bypass encryption and add a fake auth tag
-            WriteToMemory(Z80.DE.ToUShort(), encryptedContent);
-            WriteToMemory(Z80.DE.ToUShort() + Z80.BC.ToUShort(), fakeAuthTag);
-            Z80.BC += (short)fakeAuthTag.Length;
-
-            Z80.ExecuteRet();
-        };
-
-        /*
-        bool handshakeContextSaved = false;
-        var transmittedHandshakeBytes = new List<byte>();
-        Z80.ExecutionHooks[symbols["SHA256.SAVE_STATE"]] = () => {
-            handshakeContextSaved = true;
-        };
-        Z80.ExecutionHooks[symbols["SHA256.RESTORE_STATE"]] = () => {
-            handshakeContextSaved = false;
-        };
-        Z80.ExecutionHooks[symbols["SHA256.RUN"]] = () => {
-            if(Z80.A == 1 && !handshakeContextSaved) 
-                transmittedHandshakeBytes.AddRange(ReadFromMemory(Z80.HL, Z80.BC));
-        };
-        */
-
-        /*var transmittedHandshakeBytes = new List<byte>();
-        Z80.ExecutionHooks[symbols["SHA256.RUN"]] = () => {
-            if(Z80.A != 1) return;
-            transmittedHandshakeBytes.AddRange(ReadFromMemory(Z80.HL, Z80.BC));
-        };*/
-
-        /*Z80.ExecutionHooks[symbols["TLS_CONNECTION.SEND_HANDSHAKE_RECORD"]] = () => {
-            var hr = ReadFromMemory(Z80.HL, Z80.BC);
-            var s = ReadFromMemory(symbols["CLIENT_HELLO.SIZE"], 2);
-        };*/
-
-        /*Z80.ExecutionHooks[symbols["SERVER_HELLO.PARSE"]] = () => {
-            var sh = ReadFromMemory(Z80.HL.ToUShort(), Z80.BC.ToUShort());
-        };*/
+                // Bypass encryption and add a fake auth tag
+                WriteToMemory(Z80.Registers.DE.ToUShort(), encryptedContent);
+                WriteToMemory(Z80.Registers.DE.ToUShort() + Z80.Registers.BC.ToUShort(), fakeAuthTag);
+                Z80.Registers.BC += (short)fakeAuthTag.Length;
+            })
+            .ExecuteRet();
 
         RunInit();
         Run("TLS_CONNECTION.UPDATE"); //Sends ClientHello
@@ -852,25 +814,6 @@ public class TlsConnectionTests : TestBase
         Run("TLS_CONNECTION.UPDATE"); //Receives CertificateVerify
         tcpDataSent.Clear();
         Run("TLS_CONNECTION.UPDATE"); //Receives Finished
-
-        /*
-        var allTransmittedCount =
-            clientHelloBytes.Count() + serverHelloBytes.Count() + encryptedExtensionsBytes.Count() + certificateBytes.Count() + serverCertificateVerifyBytes.Count()
-            + 4 * 5;
-
-        var shs = ReadFromMemory(symbols["TLS_CONNECTION.HANDSHAKE_HASH"], 32);
-        Assert.That(shs, Is.EqualTo(finalClientHandshakeHashBytes));
-
-        var fk = ReadFromMemory(symbols["TLS_CONNECTION.FINISHED_KEY"], 32);
-        Assert.That(fk, Is.EqualTo(hmacClientKeyBytes));
-        */
-
-        /*
-        var ec = Z80.Memory[symbols["TLS_CONNECTION.ERROR_CODE"]];
-        var sec = Z80.Memory[symbols["TLS_CONNECTION.SUB_ERROR_CODE"]];
-        var als = Z80.Memory[symbols["TLS_CONNECTION.ALERT_SENT"]];
-        var hh = ReadFromMemory(symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"], 4);
-        */
 
         AssertByteInMemory("TLS_CONNECTION.STATE", STATE_ESTABLISHED);
         AssertA(STATE_ESTABLISHED);
@@ -908,18 +851,18 @@ public class TlsConnectionTests : TestBase
     {
         WriteToMemory(0x8000, [1, 2, 3, 4, 5]);
         WriteToMemory(0x9000, [1, 2, 3, 4, 5]);
-        Z80.HL = 0x8000.ToShort();
-        Z80.DE = 0x9000.ToShort();
-        Z80.BC = 5;
+        Z80.Registers.HL = 0x8000.ToShort();
+        Z80.Registers.DE = 0x9000.ToShort();
+        Z80.Registers.BC = 5;
         Run("TLS_CONNECTION.COMPARE_BLOCK");
-        Assert.That(Z80.ZF, Is.EqualTo(1));
+        Assert.That(Z80.Registers.ZF.Value, Is.EqualTo(1));
 
         Z80.Memory[0x9004] = 34;
-        Z80.HL = 0x8000.ToShort();
-        Z80.DE = 0x9000.ToShort();
-        Z80.BC = 5;
+        Z80.Registers.HL = 0x8000.ToShort();
+        Z80.Registers.DE = 0x9000.ToShort();
+        Z80.Registers.BC = 5;
         Run("TLS_CONNECTION.COMPARE_BLOCK");
-        Assert.That(Z80.ZF, Is.EqualTo(0));
+        Assert.That(Z80.Registers.ZF.Value, Is.EqualTo(0));
     }
 
     [Test]
@@ -927,17 +870,17 @@ public class TlsConnectionTests : TestBase
     {
         WriteToMemory(0x8000, [1, 2, 3, 4, 5]);
 
-        Z80.A = 0;
+        Z80.Registers.A = 0;
         Run("SHA256.RUN");
 
-        Z80.A = 1;
-        Z80.HL = 0x8000.ToShort();
-        Z80.BC = 5;
+        Z80.Registers.A = 1;
+        Z80.Registers.HL = 0x8000.ToShort();
+        Z80.Registers.BC = 5;
         Run("SHA256.RUN");
 
         Run("SHA256.SAVE_STATE");
-        Z80.A = 2;
-        Z80.DE = 0x9000.ToShort();
+        Z80.Registers.A = 2;
+        Z80.Registers.DE = 0x9000.ToShort();
         Run("SHA256.RUN");
         Run("SHA256.RESTORE_STATE");
         var actualHash = ReadFromMemory(0x9000, 32);
@@ -949,13 +892,13 @@ public class TlsConnectionTests : TestBase
 
         WriteToMemory(0x8000, [6, 7, 8, 9]);
 
-        Z80.A = 1;
-        Z80.HL = 0x8000.ToShort();
-        Z80.BC = 4;
+        Z80.Registers.A = 1;
+        Z80.Registers.HL = 0x8000.ToShort();
+        Z80.Registers.BC = 4;
         Run("SHA256.RUN");
 
-        Z80.A = 2;
-        Z80.DE = 0x9000.ToShort();
+        Z80.Registers.A = 2;
+        Z80.Registers.DE = 0x9000.ToShort();
         Run("SHA256.RUN");
 
         actualHash = ReadFromMemory(0x9000, 32);
@@ -966,19 +909,19 @@ public class TlsConnectionTests : TestBase
 
     private void RunInit(string serverName = null)
     {
-        Z80.HL = 0x9000.ToShort();
-        Z80.BC = 0x4000.ToShort();
-        Run("RECORD_RECEIVER.INIT");
+        Z80.Registers.HL = 0x9000.ToShort();
+        Z80.Registers.BC = 0x4000.ToShort();
+        RunAsCall("RECORD_RECEIVER.INIT");
 
         if(serverName == null) {
-            Z80.B = 0;
+            Z80.Registers.B = 0;
         }
         else { 
             var serverNameBytes = Encoding.ASCII.GetBytes(serverName);
             WriteToMemory(0xF000, serverNameBytes);
-            Z80.HL = 0xF000.ToShort();
-            Z80.B = (byte)serverNameBytes.Length;
+            Z80.Registers.HL = 0xF000.ToShort();
+            Z80.Registers.B = (byte)serverNameBytes.Length;
         }
-        Run("TLS_CONNECTION.INIT");
+        RunAsCall("TLS_CONNECTION.INIT");
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Konamiman.Nestor80.Assembler;
 using Konamiman.Nestor80.Linker;
-using Konamiman.PocketZ80;
+using Konamiman.Z80dotNet;
+using Konamiman.ZWatcher;
 using NUnit.Framework;
 using System.Collections;
 using System.Reflection;
@@ -18,16 +19,19 @@ public abstract class TestBase
     protected const byte TLS_HANDSHAKE_TYPE_DUMMY_2 = 200;
 
     protected static Z80Processor Z80;
+    protected static Z80Watcher watcher;
 
     protected Dictionary<string, ushort> symbols = [];
     protected byte encryptedRecordType;
     protected bool badAuthTag;
     protected bool recordAllZeros;
+    protected byte[] z80ProgramBytes;
 
     [OneTimeSetUp]
     protected void OneTimeSetUp()
     {
         Z80 = new Z80Processor();
+        Z80.AutoStopOnRetWithStackEmpty = true;
 
         var z80Codedir = Path.GetFullPath(" ../../../../../../../z80", Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
         var files = Directory.GetFiles(z80Codedir, "*.asm");
@@ -83,9 +87,7 @@ public abstract class TestBase
         var outputStream = File.OpenWrite(outputFile);
         var linkingResult = RelocatableFilesProcessor.Link(config, outputStream);
         outputStream.Close();
-        var outputBytes = File.ReadAllBytes(outputFile);
-        Array.Copy(outputBytes, 0, Z80.Memory, 0x100, outputBytes.Length);
-
+        z80ProgramBytes = File.ReadAllBytes(outputFile);
         var totalSize = linkingResult.ProgramsData.Sum(d => d.CodeSegmentSize);
 
         foreach(var programInfo in linkingResult.ProgramsData) {
@@ -136,99 +138,123 @@ public abstract class TestBase
         badAuthTag = false;
         recordAllZeros = false;
 
-        Z80.ExecutionHooks.Clear();
-        Z80.ExecutionHooks[symbols["DATA_TRANSPORT.HAS_IN_DATA"]] = () => {
-            Z80.CF = hasMoreReceivedTcpData || tcpDataRemainingFromPreviousReceive != null ? 1 : 0;
-            Z80.ExecuteRet();
-        };
-        Z80.ExecutionHooks[symbols["DATA_TRANSPORT.IS_REMOTELY_CLOSED"]] = () => {
-            Z80.CF = tcpConnectionIsRemotelyClosed ? 1 : 0;
-            Z80.ExecuteRet();
-        };
-        Z80.ExecutionHooks[symbols["DATA_TRANSPORT.RECEIVE"]] = () => {
-            var requestedLength = Z80.BC.ToUShort();
-            if(tcpDataRemainingFromPreviousReceive != null) {
-                if(requestedLength >= tcpDataRemainingFromPreviousReceive.Length) {
-                    Array.Copy(tcpDataRemainingFromPreviousReceive, 0, Z80.Memory, Z80.HL.ToUShort(), tcpDataRemainingFromPreviousReceive.Length);
-                    Z80.BC = tcpDataRemainingFromPreviousReceive.Length.ToShort();
-                    tcpDataRemainingFromPreviousReceive = null;
+        Z80.Memory.SetContents(0x100, z80ProgramBytes);
+
+        watcher = new Z80Watcher(Z80);
+        foreach(var symbol in symbols) {
+            watcher.Symbols.Add(symbol.Key, symbol.Value);
+        }
+
+        watcher
+            .BeforeFetchingInstructionAt("DATA_TRANSPORT.HAS_IN_DATA")
+            .Do(context => {
+                context.Z80.Registers.CF = hasMoreReceivedTcpData || tcpDataRemainingFromPreviousReceive != null ? 1 : 0;
+            })
+            .ExecuteRet();
+
+        watcher
+            .BeforeFetchingInstructionAt("DATA_TRANSPORT.IS_REMOTELY_CLOSED")
+            .Do(context => {
+                context.Z80.Registers.CF = tcpConnectionIsRemotelyClosed ? 1 : 0;
+            })
+            .ExecuteRet();
+
+        watcher
+            .BeforeFetchingInstructionAt("DATA_TRANSPORT.RECEIVE")
+            .Do (context => {
+                var requestedLength = context.Z80.Registers.BC.ToUShort();
+                if(tcpDataRemainingFromPreviousReceive != null) {
+                    if(requestedLength >= tcpDataRemainingFromPreviousReceive.Length) {
+                        context.Z80.Memory.SetContents(context.Z80.Registers.HL.ToUShort(), tcpDataRemainingFromPreviousReceive);
+                        context.Z80.Registers.BC = tcpDataRemainingFromPreviousReceive.Length.ToShort();
+                        tcpDataRemainingFromPreviousReceive = null;
+                    }
+                    else {
+                        context.Z80.Memory.SetContents(context.Z80.Registers.HL.ToUShort(), tcpDataRemainingFromPreviousReceive, 0, requestedLength);
+                        context.Z80.Registers.BC = requestedLength.ToShort();
+                        tcpDataRemainingFromPreviousReceive = tcpDataRemainingFromPreviousReceive.Skip(requestedLength).ToArray();
+                    }
+                }
+                else if(hasMoreReceivedTcpData) {
+                    var data = (byte[])receivedTcpDataEnumerator.Current;
+                    if(requestedLength >= data.Length) {
+                        context.Z80.Memory.SetContents(context.Z80.Registers.HL.ToUShort(), data);
+                        context.Z80.Registers.BC = data.Length.ToShort();
+                    }
+                    else {
+                        context.Z80.Memory.SetContents(context.Z80.Registers.HL.ToUShort(), data, 0, requestedLength);
+                        context.Z80.Registers.BC = requestedLength.ToShort();
+                        tcpDataRemainingFromPreviousReceive = data.Skip(requestedLength).ToArray();
+                    }
+                    hasMoreReceivedTcpData = receivedTcpDataEnumerator.MoveNext();
                 }
                 else {
-                    Array.Copy(tcpDataRemainingFromPreviousReceive, 0, Z80.Memory, Z80.HL.ToUShort(), requestedLength);
-                    Z80.BC = requestedLength.ToShort();
-                    tcpDataRemainingFromPreviousReceive = tcpDataRemainingFromPreviousReceive.Skip(requestedLength).ToArray();
+                    context.Z80.Registers.BC = 0;
                 }
-            }
-            else if(hasMoreReceivedTcpData) {
-                var data = (byte[])receivedTcpDataEnumerator.Current;
-                if(requestedLength >= data.Length) {
-                    Array.Copy(data, 0, Z80.Memory, Z80.HL.ToUShort(), data.Length);
-                    Z80.BC = data.Length.ToShort();
+            })
+            .ExecuteRet();
+
+        watcher
+            .BeforeFetchingInstructionAt("RECORD_ENCRYPTION.DECRYPT")
+            .Do(context => {
+                if(badAuthTag) {
+                    context.Z80.Registers.A = 1; //"Bad auth tag" error
+                }
+                else if(recordAllZeros) {
+                    context.Z80.Registers.A = 2; //"Record is all zeros" error
                 }
                 else {
-                    Array.Copy(data, 0, Z80.Memory, Z80.HL.ToUShort(), requestedLength);
-                    Z80.BC = requestedLength.ToShort();
-                    tcpDataRemainingFromPreviousReceive = data.Skip(requestedLength).ToArray();
+                    // Simulate "decryption" by simply removing last data byte and setting the high byte of all the content
+                    var data = context.Z80.Memory.GetContents(context.Z80.Registers.HL.ToUShort(), context.Z80.Registers.BC.ToUShort());
+                    data = data.Select(x => (byte)(x | 0x80)).ToArray();
+                    context.Z80.Memory.SetContents(context.Z80.Registers.DE.ToUShort(), data, 0, data.Length - 1);
+
+                    context.Z80.Registers.A = 0;
+                    context.Z80.Registers.BC = (short)(data.Length - 1);
+                    context.Z80.Registers.D = encryptedRecordType;
                 }
-                hasMoreReceivedTcpData = receivedTcpDataEnumerator.MoveNext();
-            }
-            else {
-                Z80.BC = 0;
-            }
-            Z80.ExecuteRet();
-        };
-        Z80.ExecutionHooks[symbols["RECORD_ENCRYPTION.DECRYPT"]] = () => {
-            if(badAuthTag) {
-                Z80.A = 1; //"Bad auth tag" error
-            }
-            else if(recordAllZeros) {
-                Z80.A = 2; //"Record is all zeros" error
-            }
-            else {
-                // Simulate "decryption" by simply removing last data byte and setting the high byte of all the content
-                var data = Z80.Memory.Skip(Z80.HL.ToUShort()).Take(Z80.BC.ToUShort()).ToArray();
-                data = data.Select(x => (byte)(x | 0x80)).ToArray();
-                Array.Copy(data, 0, Z80.Memory, Z80.DE.ToUShort(), data.Length - 1);
+            })
+            .ExecuteRet();
 
-                Z80.A = 0;
-                Z80.BC = (short)(data.Length - 1);
-                Z80.D = encryptedRecordType;
-            }
-            Z80.ExecuteRet();
-        };
-        Z80.ExecutionHooks[symbols["DATA_TRANSPORT.SEND"]] = () => {
-            tcpDataSent.AddRange(ReadFromMemory(Z80.HL.ToUShort(), Z80.BC.ToUShort()));
-            Z80.CF = 0; // Alway asssume success
-            Z80.ExecuteRet();
-        };
-        Z80.ExecutionHooks[symbols["DATA_TRANSPORT.CLOSE"]] = () => {
-            tcpConnectionIsLocallyClosed = true;
-            Z80.ExecuteRet();
-        };
+        watcher
+            .BeforeFetchingInstructionAt("DATA_TRANSPORT.SEND")
+            .Do(context => {
+                    tcpDataSent.AddRange(context.Z80.Memory.GetContents(context.Z80.Registers.HL.ToUShort(), context.Z80.Registers.BC.ToUShort()));
+                    context.Z80.Registers.CF = 0; // Alway asssume success
+                })
+            .ExecuteRet();
 
-        Z80.HL = 0x8000.ToShort();
-        Z80.BC = 1024;
+        watcher
+            .BeforeFetchingInstructionAt("DATA_TRANSPORT.CLOSE")
+            .Do(context => {
+                tcpConnectionIsLocallyClosed = true;
+            })
+            .ExecuteRet();
+
+        Z80.Reset();
+        Z80.Registers.HL = 0x8000.ToShort();
+        Z80.Registers.BC = 1024;
         Run("RECORD_RECEIVER.INIT");
     }
 
     protected void AssertMemoryContents(int address, byte[] expectedContents)
     {
-        Assert.That(ReadFromMemory(address, expectedContents.Length), Is.EqualTo(expectedContents));
+        Assert.That(Z80.Memory.GetContents(address, expectedContents.Length), Is.EqualTo(expectedContents));
     }
 
     protected void AssertMemoryContents(string symbol, byte[] expectedContents)
     {
-        Assert.That(ReadFromMemory(symbols[symbol], expectedContents.Length), Is.EqualTo(expectedContents));
+        Assert.That(Z80.Memory.GetContents(symbols[symbol], expectedContents.Length), Is.EqualTo(expectedContents));
     }
 
     protected byte[] ReadFromMemory(int address, int length)
     {
-        return Z80.Memory.Skip(address).Take(length).ToArray();
+        return Z80.Memory.GetContents(address, length);
     }
 
     protected void WriteToMemory(int address, byte[] contents)
     {
-        Array.Copy(contents, 0, Z80.Memory, address, contents.Length);
+        Z80.Memory.SetContents(address, contents);
     }
 
     protected void WriteWordToMemory(int address, ushort value, bool highEndian = false)
@@ -245,27 +271,27 @@ public abstract class TestBase
 
     protected void AssertCarrySet()
     {
-        Assert.That(Z80.CF, Is.EqualTo(1));
+        Assert.That(Z80.Registers.CF.Value, Is.EqualTo(1));
     }
 
     protected void AssertCarryReset()
     {
-        Assert.That(Z80.CF, Is.EqualTo(0));
+        Assert.That(Z80.Registers.CF.Value, Is.EqualTo(0));
     }
 
     protected void AssertBC(int value)
     {
-        Assert.That(Z80.BC.ToUShort(), Is.EqualTo(value));
+        Assert.That(Z80.Registers.BC.ToUShort(), Is.EqualTo(value));
     }
 
     protected void AssertA(string errorCodeName)
     {
-        Assert.That(Z80.A, Is.EqualTo(symbols[errorCodeName]));
+        Assert.That(Z80.Registers.A, Is.EqualTo(symbols[errorCodeName]));
     }
 
     protected void AssertA(int value)
     {
-        Assert.That(Z80.A, Is.EqualTo(value));
+        Assert.That(Z80.Registers.A, Is.EqualTo(value));
     }
 
     protected void AssertWordInMemory(string addressName, int expected)
@@ -286,6 +312,26 @@ public abstract class TestBase
 
     protected void Run(string symbol)
     {
-        Z80.Start(symbols[symbol]);
+        Run(symbols[symbol]);
+    }
+
+    protected void Run(ushort address)
+    {
+        Z80.Registers.SP = 0xFFFF.ToShort();
+        Z80.Registers.PC = address;
+        Z80.Continue();
+    }
+
+    // Z80.NET does not honor the AutoStopOnRetWithStackEmpty property when ExecuteRet is invoked,
+    // only when an actual RET instruction is executed. Thus when we are directly executing a routine
+    // that gets completely mocked (so no actual RET instruction is executed), we need to execute it
+    // indirectly, via CALL + RET. Our code starts at 100h so we just put the CALL instruction at address 0.
+    protected void RunAsCall(string symbol)
+    {
+        Z80.Memory[0] = 0xCD; // CALL
+        WriteWordToMemory(1, symbols[symbol]);
+        Z80.Memory[3] = 0xC9; // RET
+
+        Run(0);
     }
 }
