@@ -100,6 +100,11 @@ public abstract class TestBase
             file.Item2.Close();
             File.Delete(file.Item1);
         }
+
+        watcher = new Z80Watcher(Z80);
+        foreach(var symbol in symbols) {
+            watcher.Symbols.Add(symbol.Key, symbol.Value);
+        }
     }
 
     private byte[][] _receivedTcpData;
@@ -139,11 +144,7 @@ public abstract class TestBase
         recordAllZeros = false;
 
         Z80.Memory.SetContents(0x100, z80ProgramBytes);
-
-        watcher = new Z80Watcher(Z80);
-        foreach(var symbol in symbols) {
-            watcher.Symbols.Add(symbol.Key, symbol.Value);
-        }
+        watcher.RemoveAllWatches();
 
         watcher
             .BeforeFetchingInstructionAt("DATA_TRANSPORT.HAS_IN_DATA")
@@ -235,6 +236,12 @@ public abstract class TestBase
         Z80.Registers.HL = 0x8000.ToShort();
         Z80.Registers.BC = 1024;
         Run("RECORD_RECEIVER.INIT");
+    }
+
+    [TearDown]
+    public virtual void TearDown()
+    {
+        watcher.RemoveAllWatches();
     }
 
     protected void AssertMemoryContents(int address, byte[] expectedContents)
