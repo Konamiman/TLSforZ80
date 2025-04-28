@@ -425,14 +425,14 @@ public class TlsConnectionTests : TestBase
         AssertByteInMemory("TLS_CONNECTION.ALERT_SENT", 47); //ILLEGAL_PARAMETER
     }
 
-    private byte[] RecordFromHandshakeMessage(byte recordType, byte[] messageData)
+    private byte[] RecordFromHandshakeMessage(byte messageType, byte[] messageData)
     {
         return [
             TLS_RECORD_TYPE_HANDSHAKE,
             3, 3,
             (byte)((messageData.Length+4) >> 8),
             (byte)((messageData.Length+4) & 0xFF),
-            recordType,
+            messageType,
             0,
             (byte)(messageData.Length >> 8),
             (byte)(messageData.Length & 0xFF),
@@ -441,7 +441,9 @@ public class TlsConnectionTests : TestBase
     }
 
     [Test]
-    public void TestFinishedExchange()
+    [TestCase(true)]
+    //[TestCase(false)]
+    public void TestFinishedExchange(bool splitCertificateMessage)
     {
         // This test uses data dumps from a real connection
 
@@ -771,13 +773,53 @@ public class TlsConnectionTests : TestBase
             0x63,0xC3,0x05,0x50,0x89,0x45,0xA3,0xB4,0x9A,0xFD,0x57,0xEE,0x38,0x40,0x41,0x27
         };
 
-        ReceivedTcpData = [
-            RecordFromHandshakeMessage((byte)HandshakeType.ServerHello, serverHelloBytes),
-            RecordFromHandshakeMessage((byte)HandshakeType.EncryptedExtensions, encryptedExtensionsBytes),
-            RecordFromHandshakeMessage((byte)HandshakeType.Certificate, certificateBytes),
-            RecordFromHandshakeMessage((byte)HandshakeType.CertificateVerify, serverCertificateVerifyBytes),
-            RecordFromHandshakeMessage((byte)HandshakeType.Finished, serverFinishedBytes),
-        ];
+        if(splitCertificateMessage) {
+            // Simulate the reception of the "Certificate" message
+            // split in fragments of 100 bytes each.
+
+            List<byte[]> certificateMessageRecords = new();
+            var certificateMessageParts = certificateBytes.Chunk(100).ToArray();
+            var firstPart = certificateMessageParts.First();
+            certificateMessageRecords.Add(
+                [
+                    TLS_RECORD_TYPE_HANDSHAKE,
+                    3, 3,
+                    (byte)((firstPart.Length+4) >> 8),
+                    (byte)((firstPart.Length+4) & 0xFF),
+                    11, //"Certificate"
+                    0,
+                    (byte)((certificateBytes.Length) >> 8),
+                    (byte)((certificateBytes.Length) & 0xFF),
+                    ..firstPart
+                ]
+            );
+            foreach(var part in certificateMessageParts.Skip(1)) {
+                certificateMessageRecords.Add([
+                    TLS_RECORD_TYPE_HANDSHAKE,
+                    3, 3,
+                    (byte)((part.Length) >> 8),
+                    (byte)((part.Length) & 0xFF),
+                    ..part
+                ]);
+            }
+
+            ReceivedTcpData = [
+                RecordFromHandshakeMessage((byte)HandshakeType.ServerHello, serverHelloBytes),
+                RecordFromHandshakeMessage((byte)HandshakeType.EncryptedExtensions, encryptedExtensionsBytes),
+                ..certificateMessageRecords,
+                RecordFromHandshakeMessage((byte)HandshakeType.CertificateVerify, serverCertificateVerifyBytes),
+                RecordFromHandshakeMessage((byte)HandshakeType.Finished, serverFinishedBytes)
+            ];
+        }
+        else {
+            ReceivedTcpData = [
+                RecordFromHandshakeMessage((byte)HandshakeType.ServerHello, serverHelloBytes),
+                RecordFromHandshakeMessage((byte)HandshakeType.EncryptedExtensions, encryptedExtensionsBytes),
+                RecordFromHandshakeMessage((byte)HandshakeType.Certificate, certificateBytes),
+                RecordFromHandshakeMessage((byte)HandshakeType.CertificateVerify, serverCertificateVerifyBytes),
+                RecordFromHandshakeMessage((byte)HandshakeType.Finished, serverFinishedBytes)
+            ];
+        }
 
         watcher
             .BeforeFetchingInstructionAt("CLIENT_HELLO.INIT")
@@ -810,10 +852,21 @@ public class TlsConnectionTests : TestBase
         Run("TLS_CONNECTION.UPDATE"); //Sends ClientHello
         Run("TLS_CONNECTION.UPDATE"); //Receives ServerHello
         Run("TLS_CONNECTION.UPDATE"); //Receives EncryptedExtensions
-        Run("TLS_CONNECTION.UPDATE"); //Receives Certificate
+
+        if(splitCertificateMessage) {
+            var certificateMessageParts = certificateBytes.Chunk(100).ToArray();
+            // Receive all the records that build up the Certificate message
+            for(var i=0; i<certificateMessageParts.Length; i++) Run("TLS_CONNECTION.UPDATE");
+        }
+        else {
+            Run("TLS_CONNECTION.UPDATE"); //Receives Certificate
+        }
         Run("TLS_CONNECTION.UPDATE"); //Receives CertificateVerify
         tcpDataSent.Clear();
         Run("TLS_CONNECTION.UPDATE"); //Receives Finished
+
+        var x = Z80.Memory[symbols["TLS_CONNECTION.ERROR_CODE"]];
+        var y = Z80.Memory[symbols["TLS_CONNECTION.SUB_ERROR_CODE"]];
 
         AssertByteInMemory("TLS_CONNECTION.STATE", STATE_ESTABLISHED);
         AssertA(STATE_ESTABLISHED);
@@ -844,6 +897,30 @@ public class TlsConnectionTests : TestBase
         Assert.That(tcpDataSent, Is.EqualTo(expectedTcpDataSent));
         Assert.That(encryptedContent, Is.EqualTo(finishedMessage));
         Assert.That(encryptedContentType, Is.EqualTo(TLS_RECORD_TYPE_HANDSHAKE));
+    }
+
+    [Test]
+    public void TestNonCertificateSplitMessageReceived()
+    {
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 8, //Record length
+                15, //"Certificate verify"
+                0, 0x5, 0x34, //Total Size=0x0534
+                1, 2, 3, 4
+            ]
+        ];
+
+        RunInit();
+        Run("TLS_CONNECTION.UPDATE"); //Sends ClientHello
+        Run("TLS_CONNECTION.UPDATE"); //Receives certificate verify
+
+        AssertA(STATE_LOCALLY_CLOSED);
+        AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE"]);
+        AssertByteInMemory("TLS_CONNECTION.SUB_ERROR_CODE", 15);
+        AssertByteInMemory("TLS_CONNECTION.ALERT_SENT", 80); //INTERNAL_ERROR
     }
 
     [Test]

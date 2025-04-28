@@ -17,6 +17,7 @@
     public TLS_CONNECTION.ERROR_CODE.RECEIVED_RECORD_DECODE_ERROR
     public TLS_CONNECTION.ERROR_CODE.INVALID_SERVER_HELLO
     public TLS_CONNECTION.ALERT_CODE.UNEXPECTED_MESSAGE
+    public TLS_CONNECTION.ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE
     
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_RECORD
@@ -150,6 +151,7 @@ FINISHED_BEFORE_CERTIFICATE: equ 12
 BAD_FINISHED: equ 13
 BAD_MAX_FRAGMENT_LEGTH: equ 14
 INVALID_KEY_UPDATE: equ 15
+UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE: equ 16
 
     endmod
 
@@ -438,7 +440,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     ld a,(FLAGS)
     and FLAGS.CERTIFICATE_RECEIVED
     ld a,ERROR_CODE.FINISHED_BEFORE_CERTIFICATE
-    jp z,.SEND_UNALLOWED_MESSAGE_ALERT
+    jp z,.SEND_UNEXPECTED_MESSAGE_ALERT
 
     push bc
     push hl
@@ -541,9 +543,37 @@ UPDATE_ON_HANDSHAKE_STATE:
     ;* Split handshake message received while in handshake stage
 
 .HANDLE_SPLIT_HANDSHAKE_MESSAGE:
+    cp RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
+    jr nz,.HANDLE_NON_FIRST_HANDSHAKE_FRAGMENT
 
-    ;WIP
-    ret
+    ; If the message is not of type "Certificate", close with an error:
+    ; we only support Certificate messages to be received split.
+
+    ld a,(RECORD_RECEIVER.HANDSHAKE_HEADER)
+    cp MESSAGE_TYPE.CERTIFICATE
+    jr z,.HANDLE_FIRST_SPLIT_HANDSHAKE_FRAGMENT
+
+    ld b,a
+    ld a,ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE
+    ld c,ALERT_CODE.INTERNAL_ERROR
+    jp SEND_ALERT_AND_CLOSE
+
+.HANDLE_FIRST_SPLIT_HANDSHAKE_FRAGMENT:
+    ld a,(FLAGS)
+    or FLAGS.CERTIFICATE_RECEIVED
+    ld (FLAGS),a
+
+    call INCLUDE_HANDSHAKE_MESSAGE_IN_HASH
+    jp .RETURN_STATE
+
+    ; Non-first message fragment:
+    ; We assume it's a fragment of a "Certificate" message
+    ; (otherwise we would have closed the connection when receiving the first fragment)
+
+.HANDLE_NON_FIRST_HANDSHAKE_FRAGMENT:
+    ld a,1
+    call SHA256.RUN
+    jp .RETURN_STATE
 
 
     ; Include the message in the SHA256 running hash
@@ -900,6 +930,7 @@ ERROR_CODE: db 0
 ; INVALID_SERVER_HELLO: Error returned by SERVER_HELLO.PARSE
 ; BAD_MAX_FRAGMENT_LEGTH: Received value of max_fragment_length
 ; INVALID_KEY_UPDATE: Received key update request type
+; UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE: Message type
 
 SUB_ERROR_CODE: db 0
 
