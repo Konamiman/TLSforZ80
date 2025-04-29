@@ -18,6 +18,7 @@
     public TLS_CONNECTION.ERROR_CODE.INVALID_SERVER_HELLO
     public TLS_CONNECTION.ALERT_CODE.UNEXPECTED_MESSAGE
     public TLS_CONNECTION.ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE
+    public TLS_CONNECTION.ERROR_CODE.CONNECTION_CLOSED_IN_ESTABLISHED
     
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_RECORD
@@ -152,6 +153,7 @@ BAD_FINISHED: equ 13
 BAD_MAX_FRAGMENT_LEGTH: equ 14
 INVALID_KEY_UPDATE: equ 15
 UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE: equ 16
+CONNECTION_CLOSED_IN_ESTABLISHED: equ 17
 
     endmod
 
@@ -196,6 +198,8 @@ INIT:
     ld (ALERT_SENT),a
     ld (ALERT_RECEIVED),a
     ld (FLAGS),a
+    ld (INCOMING_DATA_LENGTH),a
+    ld (INCOMING_DATA_LENGTH+1),a
 
     push hl
     push bc
@@ -228,8 +232,57 @@ UPDATE:
     ;    (and possibly partially closed)
 
 UPDATE_ON_ESTABLISHED_STATE:
+
+    ; We won't do any state change if there's received data
+    ; pending to be retrieved.
+
+    ld hl,(INCOMING_DATA_LENGTH)
+    ld a,h
+    or a
+    jp nz,RETURN_STATE
+
+    ; Now check if there's an incoming record available.
+
     call DATA_TRANSPORT.HAS_IN_DATA
     jr nz,.NO_IN_DATA
+
+    call RECORD_RECEIVER.UPDATE
+    or a
+    jr z,.NO_IN_DATA
+
+    cp RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
+    jp c,HANDLE_RECORD_RECEIVER_ERROR
+    jr z,.HANDLE_FULL_RECORD
+
+    cp RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
+    jr z,.HANDLE_HANDSHAKE_MESSAGE
+
+    ; We have a split handshake message:
+    ; we don't support that.
+
+    ld a,e
+    jp UPDATE_ON_HANDSHAKE_STATE.CLOSE_WITH_UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE_ERROR
+
+    ; We have a full record that is not a handshake message.
+
+.HANDLE_FULL_RECORD:
+    ld a,d
+    cp RECORD_TYPE.APP_DATA
+    jp nz,UPDATE_ON_HANDSHAKE_STATE.HANDLE_NO_HANDSHAKE_NOR_APP_DATA_RECORD
+
+    ; We have application data:
+    ; just store pointer and size so that
+    ; further calls to RECEIVE will retrieve them.
+
+    ld (INCOMING_DATA_POINTER),hl
+    ld (INCOMING_DATA_LENGTH),bc
+
+    jp RETURN_STATE
+
+    ; Handshake message received in the stablished state.
+
+.HANDLE_HANDSHAKE_MESSAGE:
+    ld a,e
 
     ;WIP
 
@@ -278,7 +331,7 @@ UPDATE_ON_HANDSHAKE_STATE:
 
     call RECORD_RECEIVER.UPDATE
     or a    ;cp RECORD_RECEIVER.ERROR_NO_CHANGE
-    jr z,.RETURN_STATE
+    jp z,RETURN_STATE
 
     cp RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
     jp c,HANDLE_RECORD_RECEIVER_ERROR
@@ -289,12 +342,15 @@ UPDATE_ON_HANDSHAKE_STATE:
     cp RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
     jp nc,.HANDLE_SPLIT_HANDSHAKE_MESSAGE
 
-    ;We received a record that is not a handshake message:
-    ;valid record types are alert and change cipher-spec
+    ; We received a record that is not a handshake message:
+    ; recognized types are alert and change cipher-spec,
+    ; and these get the same handling before and after 
+    ; the initial handshake.
 
+.HANDLE_NO_HANDSHAKE_NOR_APP_DATA_RECORD:
     ld a,d
     cp RECORD_TYPE.CHANGE_CIHPER_SPEC
-    jr z,.RETURN_STATE
+    jp z,RETURN_STATE
 
     cp RECORD_TYPE.ALERT
     jp z,HANDLE_ALERT_RECEIVED
@@ -303,11 +359,6 @@ UPDATE_ON_HANDSHAKE_STATE:
     ld a,ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE
     ld c,ALERT_CODE.UNEXPECTED_MESSAGE
     jp SEND_ALERT_AND_CLOSE
-
-.RETURN_STATE:
-    ld a,(STATE)
-    ret
-
 
     ;* Full handshake message received while in handshake stage
     ;  HL = Message address
@@ -402,7 +453,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     or FLAGS.HAS_KEYS
     ld (FLAGS),a
 
-    jp .RETURN_STATE
+    jp RETURN_STATE
 
 
     ;* Any other type of message except Finished received:
@@ -429,7 +480,7 @@ UPDATE_ON_HANDSHAKE_STATE:
 
 .HANDLE_ENCRYPTED_EXTENSIONS:
 .HANDLE_CERTIFICATE_VERIFY:
-    jp .RETURN_STATE
+    jp RETURN_STATE
 
 
     ;* Finished message
@@ -553,6 +604,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     cp MESSAGE_TYPE.CERTIFICATE
     jr z,.HANDLE_FIRST_SPLIT_HANDSHAKE_FRAGMENT
 
+.CLOSE_WITH_UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE_ERROR:
     ld b,a
     ld a,ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE
     ld c,ALERT_CODE.INTERNAL_ERROR
@@ -564,7 +616,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     ld (FLAGS),a
 
     call INCLUDE_HANDSHAKE_MESSAGE_IN_HASH
-    jp .RETURN_STATE
+    jp RETURN_STATE
 
     ; Non-first message fragment:
     ; We assume it's a fragment of a "Certificate" message
@@ -573,8 +625,14 @@ UPDATE_ON_HANDSHAKE_STATE:
 .HANDLE_NON_FIRST_HANDSHAKE_FRAGMENT:
     ld a,1
     call SHA256.RUN
-    jp .RETURN_STATE
+    jp RETURN_STATE
 
+
+    ; Just return the current state
+
+RETURN_STATE:
+    ld a,(STATE)
+    ret
 
     ; Include the message in the SHA256 running hash
     ; Input: HL = Message address
@@ -952,6 +1010,9 @@ DESCRIPTION: db 0
 HANDSHAKE_HASH: ds 32
 SHARED_SECRET: ds 32
 FINISHED_KEY: ds 32
+
+INCOMING_DATA_POINTER: dw 0
+INCOMING_DATA_LENGTH: dw 0
 
 FINISHED_MESSAGE:
     db MESSAGE_TYPE.FINISHED
