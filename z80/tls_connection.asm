@@ -66,6 +66,7 @@
     extrn HKDF.SERVER_KEY
     extrn HKDF.CLIENT_IV
     extrn HKDF.SERVER_IV
+    extrn HKDF.UPDATE_TRAFFIC_KEY
     extrn HMAC.RUN
 
     module TLS_CONNECTION
@@ -128,11 +129,13 @@ APP_DATA: equ 23
     module MESSAGE_TYPE
 
 SERVER_HELLO: equ 2
+NEW_SESSION_TICKET: equ 4
 ENCRYPTED_EXTENSIONS: equ 8
 CERTIFICATE: equ 11
 CERTIFICATE_REQUEST: equ 13
 CERTIFICATE_VERIFY: equ 15
 FINISHED: equ 20
+KEY_UPDATE: equ 24
 
     endmod
 
@@ -259,7 +262,7 @@ UPDATE_ON_ESTABLISHED_STATE:
     jr z,.HANDLE_HANDSHAKE_MESSAGE
 
     ; We have a split handshake message:
-    ; we don't support that.
+    ; we don't support that in the Established state.
 
     ld a,e
     jp UPDATE_ON_HANDSHAKE_STATE.CLOSE_WITH_UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE_ERROR
@@ -280,12 +283,48 @@ UPDATE_ON_ESTABLISHED_STATE:
 
     jp RETURN_STATE
 
-    ; Handshake message received in the stablished state.
+    ; Handshake message received in the established state.
 
 .HANDLE_HANDSHAKE_MESSAGE:
     ld a,e
 
-    ;WIP
+    cp MESSAGE_TYPE.KEY_UPDATE
+    jr z,.UPDATE_KEYS
+
+    cp MESSAGE_TYPE.NEW_SESSION_TICKET
+    jp z,RETURN_STATE ;We ignore new session ticket messages
+
+    ; We have received an unknown/unsupported message type
+
+    ld b,a
+    ld a,ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_AFTER_HANDSHAKE
+    ld c,ALERT_CODE.UNEXPECTED_MESSAGE
+    jp SEND_ALERT_AND_CLOSE
+
+    ; We have received a key update request
+    ; TODO: verify if message length is 1 and value is 0 or 1
+
+.UPDATE_KEYS:
+    ld a,(hl) ;1 = local update requested
+    push af
+
+    scf ;Update server keys
+    call HKDF.UPDATE_TRAFFIC_KEY
+
+    pop af
+    or a
+    jp z,RETURN_STATE
+
+    ld hl,KEY_UPDATE_MESSAGE
+    ld bc,KEY_UPDATE_MESSAGE_END-KEY_UPDATE_MESSAGE
+    call SEND_HANDSHAKE_RECORD
+
+    or a ;Update client keys (AFTER sending the KeyUpdate message!)
+    call HKDF.UPDATE_TRAFFIC_KEY
+
+    jp RETURN_STATE
+
+    ; No new incoming data available
 
 .NO_IN_DATA:
     call DATA_TRANSPORT.IS_REMOTELY_CLOSED
@@ -1030,6 +1069,12 @@ FINISHED_MESSAGE:
 FINISHED_VALUE: 
     ds 32
 FINISHED_MESSAGE_END:
+
+KEY_UPDATE_MESSAGE:
+    db MESSAGE_TYPE.KEY_UPDATE
+    db 0,0,1
+    db 0    ;Don't request server key update
+KEY_UPDATE_MESSAGE_END:
 
 ONE: db 1
 
