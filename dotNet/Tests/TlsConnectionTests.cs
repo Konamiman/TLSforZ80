@@ -90,9 +90,12 @@ public class TlsConnectionTests : TestBase
 
         Run("TLS_CONNECTION.CLOSE");
         Assert.That(tcpDataSent, Is.Empty);
-        AssertByteInMemory("TLS_CONNECTION.STATE", STATE_LOCALLY_CLOSED);
-        AssertA(STATE_LOCALLY_CLOSED);
+        AssertByteInMemory("TLS_CONNECTION.STATE", STATE_FULLY_CLOSED);
+        AssertA(STATE_FULLY_CLOSED);
+        AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.LOCAL_CLOSE"]);
+        AssertByteInMemory("TLS_CONNECTION.SUB_ERROR_CODE", 0);
         Assert.That(tcpConnectionIsLocallyClosed, Is.True);
+        Assert.That(tcpDataSent, Is.Empty);
 
         // Now simulate another update after peer has closed too
 
@@ -442,7 +445,7 @@ public class TlsConnectionTests : TestBase
 
     [Test]
     [TestCase(true)]
-    //[TestCase(false)]
+    [TestCase(false)]
     public void TestFinishedExchange(bool splitCertificateMessage)
     {
         // This test uses data dumps from a real connection
