@@ -868,9 +868,6 @@ public class TlsConnectionTests : TestBase
         tcpDataSent.Clear();
         Run("TLS_CONNECTION.UPDATE"); //Receives Finished
 
-        var x = Z80.Memory[symbols["TLS_CONNECTION.ERROR_CODE"]];
-        var y = Z80.Memory[symbols["TLS_CONNECTION.SUB_ERROR_CODE"]];
-
         AssertByteInMemory("TLS_CONNECTION.STATE", STATE_ESTABLISHED);
         AssertA(STATE_ESTABLISHED);
         AssertByteInMemory("TLS_CONNECTION.FLAGS", 3); // HAS_KEYS + CERTIFICATE_RECEIVED
@@ -924,6 +921,255 @@ public class TlsConnectionTests : TestBase
         AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE"]);
         AssertByteInMemory("TLS_CONNECTION.SUB_ERROR_CODE", 15);
         AssertByteInMemory("TLS_CONNECTION.ALERT_SENT", 80); //INTERNAL_ERROR
+    }
+
+    [Test]
+    public void TestUpdateInEstablishedState_OldAppDataIsAvailable()
+    {
+        var calledRecordEncryptionUpdate = false;
+
+        InitInEstablishedState();
+
+        watcher.BeforeFetchingInstructionAt("RECORD_RECEIVER.UPDATE")
+            .Do(watcher => calledRecordEncryptionUpdate = true)
+            .ExecuteRet();
+
+        WriteWordToMemory(symbols["TLS_CONNECTION.INCOMING_DATA_LENGTH"], 1);
+
+        Run("TLS_CONNECTION.UPDATE");
+        Assert.That(calledRecordEncryptionUpdate, Is.False);
+        AssertA(STATE_ESTABLISHED);
+    }
+
+    private void InitInEstablishedState()
+    {
+        Z80.Memory[symbols["TLS_CONNECTION.STATE"]] = STATE_ESTABLISHED;
+        Z80.Memory[symbols["TLS_CONNECTION.FLAGS"]] = 1; //HAS_KEYS
+    }
+
+    [Test]
+    public void TestUpdateInEstablishedState_NoNewDataIsAvailable()
+    {
+        InitInEstablishedState();
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_ESTABLISHED);
+        AssertWordInMemory("TLS_CONNECTION.INCOMING_DATA_LENGTH", 0);
+    }
+
+    [Test]
+    public void TestUpdateInEstablishedState_ChangeCihperSpecReceived()
+    {
+        InitInEstablishedState();
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_CHANGE_CIHPER_SPEC,
+                3, 3,
+                0, 1, //Record length
+                1
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_ESTABLISHED);
+
+        Assert.That(tcpDataSent, Is.Empty);
+        AssertWordInMemory("TLS_CONNECTION.INCOMING_DATA_LENGTH", 0);
+    }
+
+    [Test]
+    public void TestUpdateInEstablishedState_UnsupportedResordTypeReceived()
+    {
+        InitInEstablishedState();
+
+        ReceivedTcpData = [
+            [
+                0x34, //Unsupported record type
+                3, 3,
+                0, 1, //Record length
+                1
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_LOCALLY_CLOSED);
+
+        AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_ESTABLISHED"]);
+        AssertByteInMemory("TLS_CONNECTION.SUB_ERROR_CODE", 0x34);
+
+        var expectedTcpDataSent = new byte[] {
+            TLS_RECORD_TYPE_ALERT,
+            3, 3,
+            0, 2, //Record length
+            2, //Warning
+            (byte)symbols["TLS_CONNECTION.ALERT_CODE.UNEXPECTED_MESSAGE"]
+        };
+
+        Assert.That(tcpDataSent, Is.EqualTo(expectedTcpDataSent));
+    }
+
+    [Test]
+    public void TestUpdateInEstablishedState_SplitHandshakeMessageReceived()
+    {
+        InitInEstablishedState();
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 8, //Record length
+                11, //"Certificate"
+                0, 0x5, 0x34, //Total Size=0x0534
+                1, 2, 3, 4
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_LOCALLY_CLOSED);
+
+        AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE"]);
+        AssertByteInMemory("TLS_CONNECTION.SUB_ERROR_CODE", 11);
+
+        var expectedTcpDataSent = new byte[] {
+            TLS_RECORD_TYPE_ALERT,
+            3, 3,
+            0, 2, //Record length
+            2, //Warning
+            (byte)symbols["TLS_CONNECTION.ALERT_CODE.INTERNAL_ERROR"]
+        };
+
+        Assert.That(tcpDataSent, Is.EqualTo(expectedTcpDataSent));
+    }
+
+    [Test]
+    public void TestUpdateInEstablishedState_UnsupportedHandshakeMessageReceived()
+    {
+        InitInEstablishedState();
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 5, //Record length
+                0x34, //Unsupported handshake message
+                0, 0, 0, //Message length
+                0
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_LOCALLY_CLOSED);
+
+        AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", symbols["TLS_CONNECTION.ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_ESTABLISHED"]);
+        AssertByteInMemory("TLS_CONNECTION.SUB_ERROR_CODE", 0x34);
+
+        var expectedTcpDataSent = new byte[] {
+            TLS_RECORD_TYPE_ALERT,
+            3, 3,
+            0, 2, //Record length
+            2, //Warning
+            (byte)symbols["TLS_CONNECTION.ALERT_CODE.UNEXPECTED_MESSAGE"]
+        };
+
+        Assert.That(tcpDataSent, Is.EqualTo(expectedTcpDataSent));
+    }
+
+    [Test]
+    public void TestUpdateInEstablishedState_NewSessionTicketMessageReceivedAndIgnored()
+    {
+        InitInEstablishedState();
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 5, //Record length
+                4, //New session ticket
+                0, 0, 1, //Message length
+                0
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_ESTABLISHED);
+
+        Assert.That(tcpDataSent, Is.Empty);
+        AssertWordInMemory("TLS_CONNECTION.INCOMING_DATA_LENGTH", 0);
+    }
+
+    [Test]
+    [TestCase(true)]
+    [TestCase(false)]
+    public void TestUpdateInEstablishedState_KeyUpdateMessageReceived(bool clientKeyUpdateRequested)
+    {
+        InitInEstablishedState();
+
+        bool clientKeyUpdated = false;
+        bool serverKeyUpdated = false;
+
+        watcher
+            .BeforeFetchingInstructionAt("HKDF.UPDATE_TRAFFIC_KEY")
+            .Do(context => {
+                if(context.Z80.Registers.CF == 0) {
+                    clientKeyUpdated = true;
+                }
+                else {
+                    serverKeyUpdated = true;
+                }
+            })
+            .ExecuteRet();
+
+        watcher
+            .BeforeFetchingInstructionAt("RECORD_ENCRYPTION.ENCRYPT")
+            .Do(watcher => {
+                var encryptedContent = ReadFromMemory(Z80.Registers.HL.ToUShort(), Z80.Registers.BC.ToUShort());
+
+                // Bypass encryption and add contet type and a fake auth tag
+                var fakeAuthTag = new byte[] { Z80.Registers.A, 1, 2, 3 };
+                WriteToMemory(Z80.Registers.DE.ToUShort(), encryptedContent);
+                WriteToMemory(Z80.Registers.DE.ToUShort() + Z80.Registers.BC.ToUShort(), fakeAuthTag);
+                Z80.Registers.BC += (short)fakeAuthTag.Length;
+            })
+            .ExecuteRet();
+
+        ReceivedTcpData = [
+            [
+                TLS_RECORD_TYPE_HANDSHAKE,
+                3, 3,
+                0, 5, //Record length
+                24, //Key update
+                0, 0, 1, //Message length
+                (byte)(clientKeyUpdateRequested ? 1 : 0)
+            ]
+        ];
+
+        Run("TLS_CONNECTION.UPDATE");
+        AssertA(STATE_ESTABLISHED);
+
+        Assert.That(serverKeyUpdated, Is.True);
+
+        if(clientKeyUpdateRequested) {
+            Assert.That(clientKeyUpdated, Is.True);
+
+            var expectedTcpDataSent = new byte[] {
+                TLS_RECORD_TYPE_APP_DATA,
+                3, 3,
+                0, 9, //Record length
+                24, //Key update
+                0, 0, 1, //Message length
+                0,
+                TLS_RECORD_TYPE_HANDSHAKE,
+                1, 2, 3
+            };
+
+            Assert.That(tcpDataSent, Is.EqualTo(expectedTcpDataSent));
+        }
+        else {
+            Assert.That(clientKeyUpdated, Is.False);
+
+            Assert.That(tcpDataSent, Is.Empty);
+        }
     }
 
     [Test]
