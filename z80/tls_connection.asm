@@ -766,18 +766,39 @@ SEND:
 
 
 ;--- Receive data
-;    Input:  HL = Data
-;            BC = Length (max 512 bytes)
+;    Input:  DE = Destination for data
+;            BC = Length
 ;    Output: BC = Actual length
 
 RECEIVE:
-    call CAN_RECEIVE
-    jr c,.DO
-    ld bc,0
+    ld hl,(INCOMING_DATA_LENGTH)
+    ld a,h
+    or l
+    jr z,.NO_RECEIVE
+
+    push hl ;Save available length for later
+    or a
+    sbc hl,bc
+    jr nc,.DO_RECEIVE   ;Length requested <= length available
+    ld bc,(INCOMING_DATA_LENGTH)    ;Length requested > length available
+.DO_RECEIVE:
+    ld hl,(INCOMING_DATA_POINTER)
+    push hl ;Save data pointer for later
+    push bc
+    ldir
+    pop bc
+
+    pop hl  ;Data pointer
+    add hl,bc
+    ld (INCOMING_DATA_POINTER),hl
+    pop hl  ;Data length
+    or a
+    sbc hl,bc
+    ld (INCOMING_DATA_LENGTH),hl
     ret
 
-.DO:
-    ;WIP
+.NO_RECEIVE:
+    ld bc,0
     ret
 
 

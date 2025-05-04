@@ -1173,6 +1173,42 @@ public class TlsConnectionTests : TestBase
     }
 
     [Test]
+    public void TestReceive()
+    {
+        const ushort INCOMING_DATA_BUFFER = 0xE000;
+        const ushort DESTINATION_FOR_DATA = 0xDF00;
+
+        WriteWordToMemory("TLS_CONNECTION.INCOMING_DATA_LENGTH", 100);
+        WriteWordToMemory("TLS_CONNECTION.INCOMING_DATA_POINTER", INCOMING_DATA_BUFFER);
+        WriteToMemory(INCOMING_DATA_BUFFER, [.. Enumerable.Range(1,100).Select(x => (byte)x)]);
+
+        Z80.Registers.BC = 70;
+        Z80.Registers.DE = DESTINATION_FOR_DATA.ToShort();
+        Run("TLS_CONNECTION.RECEIVE");
+        Assert.That(Z80.Registers.BC, Is.EqualTo(70));
+        AssertMemoryContents(DESTINATION_FOR_DATA, [..Enumerable.Range(1,70).Select(x => (byte)x)]);
+
+        Z80.Registers.BC = 70;
+        Z80.Registers.DE = DESTINATION_FOR_DATA.ToShort();
+        Run("TLS_CONNECTION.RECEIVE");
+        Assert.That(Z80.Registers.BC, Is.EqualTo(30));
+        AssertMemoryContents(DESTINATION_FOR_DATA, [.. Enumerable.Range(71, 30).Select(x => (byte)x)]);
+
+        Z80.Registers.BC = 70;
+        Z80.Registers.DE = DESTINATION_FOR_DATA.ToShort();
+        Run("TLS_CONNECTION.RECEIVE");
+        Assert.That(Z80.Registers.BC, Is.EqualTo(0));
+        AssertMemoryContents(DESTINATION_FOR_DATA, [.. Enumerable.Range(71, 30).Select(x => (byte)x)]); //Previous data not modified
+
+        Z80.Registers.HL = INCOMING_DATA_BUFFER.ToShort();
+        Z80.Registers.BC = 70;
+        Z80.Registers.DE = DESTINATION_FOR_DATA.ToShort();
+        Run("TLS_CONNECTION.RECEIVE");
+        Assert.That(Z80.Registers.BC, Is.EqualTo(0));
+        AssertMemoryContents(DESTINATION_FOR_DATA, [.. Enumerable.Range(71, 30).Select(x => (byte)x)]); //Previous data not modified
+    }
+
+    [Test]
     public void TestCompareBlock()
     {
         WriteToMemory(0x8000, [1, 2, 3, 4, 5]);

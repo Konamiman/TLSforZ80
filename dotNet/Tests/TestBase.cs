@@ -264,6 +264,11 @@ public abstract class TestBase
         Z80.Memory.SetContents(address, contents);
     }
 
+    protected void WriteWordToMemory(string symbol, ushort value, bool highEndian = false)
+    {
+        WriteWordToMemory(symbols[symbol], value, highEndian);
+    }
+
     protected void WriteWordToMemory(int address, ushort value, bool highEndian = false)
     {
         if(highEndian) {
