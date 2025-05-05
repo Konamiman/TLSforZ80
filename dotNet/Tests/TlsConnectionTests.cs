@@ -1209,6 +1209,84 @@ public class TlsConnectionTests : TestBase
     }
 
     [Test]
+    public void TestSend()
+    {
+        InitInEstablishedState();
+
+        watcher
+            .BeforeFetchingInstructionAt("TLS_CONNECTION.CAN_SEND")
+            .Do(watcher => {
+                Z80.Registers.CF = 1;
+            })
+            .ExecuteRet();
+
+        watcher
+            .BeforeFetchingInstructionAt("RECORD_ENCRYPTION.ENCRYPT")
+            .Do(watcher => {
+                var encryptedContent = ReadFromMemory(Z80.Registers.HL.ToUShort(), Z80.Registers.BC.ToUShort());
+
+                // Bypass encryption and add contet type and a fake auth tag
+                var fakeAuthTag = new byte[] { Z80.Registers.A, 10, 20, 30 };
+                WriteToMemory(Z80.Registers.DE.ToUShort(), encryptedContent);
+                WriteToMemory(Z80.Registers.DE.ToUShort() + Z80.Registers.BC.ToUShort(), fakeAuthTag);
+                Z80.Registers.BC += (short)fakeAuthTag.Length;
+            })
+            .ExecuteRet();
+
+        const ushort SOURCE_OF_DATA = 0xE000;
+        WriteToMemory(SOURCE_OF_DATA, [.. Enumerable.Range(1, 100).Select(x => (byte)x)]);
+
+        Z80.Registers.HL = SOURCE_OF_DATA.ToShort();
+        Z80.Registers.BC = 25;
+        Run("TLS_CONNECTION.SEND");
+        Assert.That(Z80.Registers.CF.Value, Is.EqualTo(0));
+
+        var expectedSent = new byte[] { 
+            TLS_RECORD_TYPE_APP_DATA,
+            3, 3,
+            0, 14, //Record length
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+            TLS_RECORD_TYPE_APP_DATA,
+            10, 20, 30,
+
+            TLS_RECORD_TYPE_APP_DATA,
+            3, 3,
+            0, 14, //Record length
+            11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+            TLS_RECORD_TYPE_APP_DATA,
+            10, 20, 30,
+
+            TLS_RECORD_TYPE_APP_DATA,
+            3, 3,
+            0, 9, //Record length
+            21, 22, 23, 24, 25,
+            TLS_RECORD_TYPE_APP_DATA,
+            10, 20, 30,
+        };
+
+        Assert.That(tcpDataSent, Is.EqualTo(expectedSent));
+    }
+
+    [Test]
+    public void TestSend_ErrorWhenCantSend()
+    {
+        InitInEstablishedState();
+
+        watcher
+            .BeforeFetchingInstructionAt("TLS_CONNECTION.CAN_SEND")
+            .Do(watcher => {
+                Z80.Registers.CF = 0;
+            })
+            .ExecuteRet();
+
+        Z80.Registers.BC = 10;
+        Run("TLS_CONNECTION.SEND");
+        Assert.That(Z80.Registers.CF.Value, Is.EqualTo(1));
+
+        Assert.That(tcpDataSent, Is.Empty);
+    }
+
+    [Test]
     public void TestCompareBlock()
     {
         WriteToMemory(0x8000, [1, 2, 3, 4, 5]);

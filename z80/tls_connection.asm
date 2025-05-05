@@ -53,6 +53,7 @@
     extrn SHA256.SAVE_STATE
     extrn SHA256.RESTORE_STATE
     extrn RECORD_ENCRYPTION.ENCRYPT
+    extrn RECORD_ENCRYPTION.TAG_SIZE
     extrn RECORD_RECEIVER.UPDATE
     extrn RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     extrn RECORD_RECEIVER.HANDSHAKE_HEADER
@@ -76,6 +77,12 @@
 
     module TLS_CONNECTION
 
+    ifdef DEBUGGING
+OUTPUT_DATA_BUFFER_LENGTH: equ 10
+    else
+OUTPUT_DATA_BUFFER_LENGTH: equ 128
+    endif
+
     root CLIENT_HELLO.INIT
     root CLIENT_HELLO.MESSAGE_HEADER
     root CLIENT_HELLO.SIZE
@@ -89,6 +96,7 @@
     root SHA256.SAVE_STATE
     root SHA256.RESTORE_STATE
     root RECORD_ENCRYPTION.ENCRYPT
+    root RECORD_ENCRYPTION.TAG_SIZE    
     root RECORD_RECEIVER.UPDATE
     root RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     root RECORD_RECEIVER.HANDSHAKE_HEADER
@@ -753,16 +761,44 @@ CAN_RECEIVE:
 
 ;--- Send data
 ;    Input:  HL = Data
-;            BC = Length (max 512 bytes)
+;            BC = Length
 ;    Output: Cy = 1 if error
 
 SEND:
     call CAN_SEND
+    jr c,.LOOP
     ccf
-    ret c
-
-    ;WIP
     ret
+
+.LOOP:
+    push bc ;Remaining data length
+    push hl ;Data address
+    ld hl,OUTPUT_DATA_BUFFER_LENGTH
+    or a
+    sbc hl,bc
+    jr nc,.GO
+    ld bc,OUTPUT_DATA_BUFFER_LENGTH
+.GO:
+
+    pop hl      ;Data address
+    push hl
+    push bc     ;Chunk size
+    call SEND_APP_DATA_RECORD
+    pop bc      ;Chunk size
+    pop de      ;Data address
+    pop hl      ;Remaining data length
+    ret c       ;Error sending record
+
+    or a
+    sbc hl,bc   ;Updated remaining data length
+    ret z       ;No more data left to send
+
+    ex de,hl    ;Data address to HL again, DE is remaining length
+    add hl,bc   ;Updated data address
+
+    push de
+    pop bc      ;Remaining data length to BC again
+    jr .LOOP
 
 
 ;--- Receive data
@@ -976,10 +1012,23 @@ SEND_HANDSHAKE_RECORD:
     ;jp SEND_RECORD
 
 
-;--- Send a record
+;--- Send an application data record
+;    Input:  HL = Data address
+;            BC = Data length (max OUTPUT_DATA_BUFFER_LENGTH)
+
+SEND_APP_DATA_RECORD:
+    ld a,RECORD_TYPE.APP_DATA
+    ld de,OUTPUT_DATA_BUFFER
+    push de
+    jr SEND_RECORD.ENCRYPT_TO_DE
+
+
+;--- Send a record that is not application data
+;    (encryption will happen in-place)
 ;    Input:  A  = Record type
 ;            HL = Record address
 ;            BC = Record length
+;    Output: Cy = 1 if error
 
 SEND_RECORD:
     ld d,a
@@ -999,12 +1048,14 @@ SEND_RECORD:
 .ENCRYPT:
     push hl
     pop de  ;We overwrite the original data with the encrypted version
+.ENCRYPT_TO_DE:
     call RECORD_ENCRYPTION.ENCRYPT
     ld a,RECORD_TYPE.APP_DATA
 
 .SEND:
 
     ; Here the record has been encrypted, or will be sent as plaintext
+    ; and the address of the record data is in the stack.
 
     ld (RECORD_HEADER.CONTENT_TYPE),a
     ld a,b
@@ -1019,7 +1070,8 @@ SEND_RECORD:
 
     pop bc
     pop hl
-    call DATA_TRANSPORT.SEND    ;...then send the record itself.
+    call nc,DATA_TRANSPORT.SEND    ;...then send the record itself.
+
     ret
 
 
@@ -1108,6 +1160,8 @@ KEY_UPDATE_MESSAGE:
 KEY_UPDATE_MESSAGE_END:
 
 ONE: db 1
+
+OUTPUT_DATA_BUFFER: ds OUTPUT_DATA_BUFFER_LENGTH + 1 + 16 ;RECORD_ENCRYPTION.TAG_SIZE - can't use in DS because it's an external symbol
 
     endmod
 
