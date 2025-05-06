@@ -76,6 +76,7 @@ internal partial class TcpIpUnapi
         cpu.HL = Math.Min(connection.AvailableCount, ushort.MaxValue).ToShort();
         cpu.DE = 0;
         cpu.IX = -1;
+        cpu.A = 0;
 
         return ERR_OK;
     }

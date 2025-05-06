@@ -34,7 +34,8 @@ internal class Z80Runner
         foreach(var file in files) {
             var assemblyResult = AssemblySourceProcessor.Assemble(File.ReadAllText(file), new AssemblyConfiguration() {
                 BuildType = BuildType.Relocatable,
-                GetStreamForInclude = fileName => File.OpenRead(Path.Combine(Path.GetDirectoryName(file), fileName))
+                GetStreamForInclude = fileName => File.OpenRead(Path.Combine(Path.GetDirectoryName(file), fileName)),
+                PredefinedSymbols = [("DEBUGGING", 0xFFFF)]
             });
 
             if(assemblyResult.HasErrors) {
@@ -401,6 +402,80 @@ internal class Z80Runner
         var handshakeHeader = GetOutputBuffer(4, symbols["RECORD_RECEIVER.HANDSHAKE_HEADER"]);
         var handshakeSize = GetWordFromMemory("RECORD_RECEIVER.HANDSHAKE_MSG_SIZE");
         return (handshakeHeader, handshakeSize);
+    }
+
+    public static void TlsConnectionInit(string serverName = null)
+    {
+        if(serverName is null) {
+            Z80.B = 0;
+        }
+        else {
+            var serverNameBytes = Encoding.ASCII.GetBytes(serverName);
+            Z80.HL = BUFFER_IN.ToShort();
+            Z80.B = (byte)serverNameBytes.Length;
+            SetInputBuffer(serverNameBytes, BUFFER_IN);
+        }
+        Run("TLS_CONNECTION.INIT");
+    }
+
+    public static byte TlsConnectionUpdate()
+    {
+        Run("TLS_CONNECTION.UPDATE");
+        return Z80.A;
+    }
+
+    public static bool TlsConnectionSend(byte[] data)
+    {
+        Z80.HL = unchecked((short)BUFFER_IN);
+        Z80.BC = (short)data.Length;
+        SetInputBuffer(data, BUFFER_IN);
+        Run("TLS_CONNECTION.SEND");
+        return Z80.CF == 0;
+    }
+
+    public static byte[] TlsConnectionReceive(int length)
+    {
+        Z80.HL = unchecked((short)BUFFER_OUT);
+        Z80.BC = (short)length;
+        Run("TLS_CONNECTION.RECEIVE");
+        return GetOutputBuffer(Z80.BC, BUFFER_OUT);
+    }
+
+    public static void TlsConnectionClose()
+    {
+        Run("TLS_CONNECTION.CLOSE");
+    }
+
+    public static byte TlsConnectionGetState()
+    {
+        return Z80.Memory[symbols["TLS_CONNECTION.STATE"]];
+    }
+
+    public static (byte, byte) TlsConnectionGetErrorCode()
+    { 
+        return (Z80.Memory[symbols["TLS_CONNECTION.ERROR_CODE"]], Z80.Memory[symbols["TLS_CONNECTION.SUB_ERROR_CODE"]]);
+    }
+
+    public static byte TlsConnectionAlertSent()
+    {
+        return Z80.Memory[symbols["TLS_CONNECTION.ALERT_SENT"]];
+    }
+
+    public static byte TlsConnectionAlertReceived()
+    {
+        return Z80.Memory[symbols["TLS_CONNECTION.ALERT_RECEIVED"]];
+    }
+
+    public static bool TlsConnectionCanSend()
+    {
+       Run("TLS_CONNECTION.CAN_SEND");
+       return Z80.CF == 1;
+    }
+
+    public static bool TlsConnectionCanReceive()
+    {
+        Run("TLS_CONNECTION.CAN_RECEIVE");
+        return Z80.CF == 1;
     }
 
     private static void SetInputBuffer(byte[] data, int address = BUFFER_IN)

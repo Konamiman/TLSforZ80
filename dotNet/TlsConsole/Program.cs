@@ -72,17 +72,15 @@ class Program
             keepRunning &= connection.State == ConnectionState.Established;
         }
 
-        if(connection.ErrorMessage is not null) {
-            WriteLine($"--- Something went wrong: {connection.ErrorMessage}");
-            if(connection.AlertSent is not null) {
-                WriteLine($"---Alert sent: {connection.AlertSent}");
-            }
+        var errorCode = connection.GetErrorCode();
+        WriteLine($"--- Error code: {errorCode.Item1}");
+        WriteLine($"--- Sub errorcode: {errorCode.Item2}");
+
+        if(connection.AlertSent is not null) {
+            WriteLine($"--- Alert sent: {connection.AlertSent}");
         }
-        else if(connection.State != ConnectionState.Established) {
-            WriteLine("--- Connection closed by peer");
-            if(connection.AlertReceived is not null) {
-                WriteLine($"--- TLS alert received: {connection.AlertReceived}");
-            }
+        if(connection.AlertReceived is not null) {
+            WriteLine($"--- TLS alert received: {connection.AlertReceived}");
         }
 
         connection.Close();
