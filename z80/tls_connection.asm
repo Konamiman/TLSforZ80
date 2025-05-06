@@ -45,6 +45,7 @@
     extrn CLIENT_HELLO.INIT
     extrn CLIENT_HELLO.MESSAGE_HEADER
     extrn CLIENT_HELLO.SIZE
+    extrn CLIENT_HELLO.PUBLIC_KEY
     extrn P256.GENERATE_KEY_PAIR
     extrn P256.GENERATE_SHARED_KEY
     extrn DATA_TRANSPORT.SEND
@@ -56,6 +57,7 @@
     extrn SHA256.RESTORE_STATE
     extrn RECORD_ENCRYPTION.ENCRYPT
     extrn RECORD_ENCRYPTION.TAG_SIZE
+    extrn RECORD_ENCRYPTION.INIT
     extrn RECORD_RECEIVER.UPDATE
     extrn RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     extrn RECORD_RECEIVER.HANDSHAKE_HEADER
@@ -88,6 +90,7 @@ OUTPUT_DATA_BUFFER_LENGTH: equ 128
     root CLIENT_HELLO.INIT
     root CLIENT_HELLO.MESSAGE_HEADER
     root CLIENT_HELLO.SIZE
+    root CLIENT_HELLO.PUBLIC_KEY
     root P256.GENERATE_KEY_PAIR
     root P256.GENERATE_SHARED_KEY
     root DATA_TRANSPORT.SEND
@@ -98,7 +101,8 @@ OUTPUT_DATA_BUFFER_LENGTH: equ 128
     root SHA256.SAVE_STATE
     root SHA256.RESTORE_STATE
     root RECORD_ENCRYPTION.ENCRYPT
-    root RECORD_ENCRYPTION.TAG_SIZE    
+    root RECORD_ENCRYPTION.TAG_SIZE
+    root RECORD_ENCRYPTION.INIT
     root RECORD_RECEIVER.UPDATE
     root RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     root RECORD_RECEIVER.HANDSHAKE_HEADER
@@ -223,8 +227,8 @@ INIT:
     push hl
     push bc
     call SHA256.RUN ;With A=0, to initialize, for the hash of the transmitted handshake bytes
+    ld hl,CLIENT_HELLO.PUBLIC_KEY
     call P256.GENERATE_KEY_PAIR
-    ex de,hl
     pop bc
     pop hl
     call CLIENT_HELLO.INIT
@@ -325,6 +329,8 @@ UPDATE_ON_ESTABLISHED_STATE:
 
     scf ;Update server keys
     call HKDF.UPDATE_TRAFFIC_KEY
+
+    call INIT_RECORD_ENCRYPTION
 
     pop af
     or a
@@ -507,6 +513,8 @@ UPDATE_ON_HANDSHAKE_STATE:
     pop ix
     call HKDF.DERIVE_HS_KEYS
 
+    call INIT_RECORD_ENCRYPTION
+
     call SHA256.RESTORE_STATE ;Restore here (not before) because HKDF does its own hashing too
 
     ld a,(FLAGS)
@@ -628,7 +636,9 @@ UPDATE_ON_HANDSHAKE_STATE:
     call SEND_HANDSHAKE_RECORD
 
     ld hl,HANDSHAKE_HASH
-    call HKDF.DERIVE_AP_KEYS 
+    call HKDF.DERIVE_AP_KEYS
+
+    call INIT_RECORD_ENCRYPTION
     
     ;Now we have the keys for application data, the handshake has finished
     
@@ -693,6 +703,22 @@ UPDATE_ON_HANDSHAKE_STATE:
 RETURN_STATE:
     ld a,(STATE)
     ret
+
+
+    ; Initialize the record encryption engine,
+    ; must be done every time that the encryption keys change.
+
+INIT_RECORD_ENCRYPTION:
+    ld hl,HKDF.CLIENT_KEY
+    ld de,HKDF.CLIENT_IV
+    or a
+    call RECORD_ENCRYPTION.INIT
+    ld hl,HKDF.SERVER_KEY
+    ld de,HKDF.SERVER_IV
+    scf
+    call RECORD_ENCRYPTION.INIT
+    ret
+
 
     ; Include the message in the SHA256 running hash
     ; Input: HL = Message address

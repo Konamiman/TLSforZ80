@@ -3,6 +3,7 @@
     public CLIENT_HELLO.MESSAGE_HEADER
     public CLIENT_HELLO.SIZE
     public CLIENT_HELLO.SESSION_ID
+    public CLIENT_HELLO.PUBLIC_KEY
 
     ifdef DEBUGGING
 
@@ -17,6 +18,8 @@ RANDOM_SIZE: equ 32
 PUBLIC_KEY_SIZE: equ 64
 
 ;--- Init
+;    Assumes that public key has been copied to PUBLIC_KEY
+;
 ;    Input:  HL = Address of "server name"
 ;            B  = Length of "server name" (max 128 bytes!)
 ;            DE = Address of public key
@@ -27,11 +30,6 @@ PUBLIC_KEY_SIZE: equ 64
 INIT:
     push hl
     push bc
-
-    ex de,hl
-    ld de,PUBLIC_KEY
-    ld bc,PUBLIC_KEY_SIZE
-    ldir
 
     ld a,r
     ld l,a

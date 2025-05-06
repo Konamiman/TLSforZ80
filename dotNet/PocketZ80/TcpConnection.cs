@@ -79,7 +79,7 @@ public class TcpConnection
     public void Send(byte[] data, bool push)
     {
         if(!CanSend())
-            throw new InvalidOperationException("Can't send data in the current connection state");
+            //throw new InvalidOperationException("Can't send data in the current connection state");
 
         try {
             var stream = tcpClient.GetStream();
