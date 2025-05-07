@@ -48,15 +48,16 @@ class Program
             return;
         }
 
+        WriteLine("--- Initiating TLS...");
         var connection = new TlsClientConnection(tcpTransport, null, host);
         tcpTransport.BindConnectionToZ80();
 
         while(connection.State < ConnectionState.Established) ;
 
-        if(httpGet) {
-            connection.SendApplicationData(Encoding.ASCII.GetBytes($"GET / HTTP/1.1\r\nHost: {host}\r\n"));
-        }
         WriteLine("--- Connected! Typed lines will be sent when pressing ENTER");
+        if(httpGet) {
+            connection.SendApplicationData(Encoding.ASCII.GetBytes($"GET / HTTP/1.1\r\nHost: {host}\r\n\r\n"));
+        }
 
         while(keepRunning) {
             if(KeyAvailable) {

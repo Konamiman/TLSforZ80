@@ -23,12 +23,12 @@
     public TLS_CONNECTION.ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE
     public TLS_CONNECTION.ERROR_CODE.CONNECTION_CLOSED_IN_ESTABLISHED
     public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_ESTABLISHED    
+    public TLS_CONNECTION.STATE
 
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_RECORD
     public TLS_CONNECTION.SEND_HANDSHAKE_RECORD
     public TLS_CONNECTION.SEND_ALERT_RECORD
-    public TLS_CONNECTION.STATE
     public TLS_CONNECTION.FLAGS
     public TLS_CONNECTION.HANDSHAKE_HASH
     public TLS_CONNECTION.SHARED_SECRET
@@ -267,7 +267,7 @@ UPDATE_ON_ESTABLISHED_STATE:
     ; Now check if there's an incoming record available.
 
     call DATA_TRANSPORT.HAS_IN_DATA
-    jr nz,.NO_IN_DATA
+    jr nc,.NO_IN_DATA
 
     call RECORD_RECEIVER.UPDATE
     or a
@@ -793,7 +793,11 @@ CAN_RECEIVE:
 ;    Output: Cy = 1 if error
 
 SEND:
+    push hl
+    push bc
     call CAN_SEND
+    pop bc
+    pop hl
     jr c,.LOOP
     ccf
     ret

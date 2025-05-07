@@ -1268,6 +1268,51 @@ public class TlsConnectionTests : TestBase
     }
 
     [Test]
+    public void TestSend_FewData()
+    {
+        InitInEstablishedState();
+
+        watcher
+            .BeforeFetchingInstructionAt("TLS_CONNECTION.CAN_SEND")
+            .Do(watcher => {
+                Z80.Registers.CF = 1;
+            })
+            .ExecuteRet();
+
+        watcher
+            .BeforeFetchingInstructionAt("RECORD_ENCRYPTION.ENCRYPT")
+            .Do(watcher => {
+                var encryptedContent = ReadFromMemory(Z80.Registers.HL.ToUShort(), Z80.Registers.BC.ToUShort());
+
+                // Bypass encryption and add contet type and a fake auth tag
+                var fakeAuthTag = new byte[] { Z80.Registers.A, 10, 20, 30 };
+                WriteToMemory(Z80.Registers.DE.ToUShort(), encryptedContent);
+                WriteToMemory(Z80.Registers.DE.ToUShort() + Z80.Registers.BC.ToUShort(), fakeAuthTag);
+                Z80.Registers.BC += (short)fakeAuthTag.Length;
+            })
+            .ExecuteRet();
+
+        const ushort SOURCE_OF_DATA = 0xE000;
+        WriteToMemory(SOURCE_OF_DATA, [100, 150, 200]);
+
+        Z80.Registers.HL = SOURCE_OF_DATA.ToShort();
+        Z80.Registers.BC = 3;
+        Run("TLS_CONNECTION.SEND");
+        Assert.That(Z80.Registers.CF.Value, Is.EqualTo(0));
+
+        var expectedSent = new byte[] {
+            TLS_RECORD_TYPE_APP_DATA,
+            3, 3,
+            0, 7, //Record length
+            100, 150, 200,
+            TLS_RECORD_TYPE_APP_DATA,
+            10, 20, 30,
+        };
+
+        Assert.That(tcpDataSent, Is.EqualTo(expectedSent));
+    }
+
+    [Test]
     public void TestSend_ErrorWhenCantSend()
     {
         InitInEstablishedState();

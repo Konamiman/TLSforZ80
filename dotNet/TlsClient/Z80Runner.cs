@@ -421,6 +421,15 @@ internal class Z80Runner
     public static byte TlsConnectionUpdate()
     {
         Run("TLS_CONNECTION.UPDATE");
+        /*
+        var x = Z80.Memory[symbols["TLS_CONNECTION.INCOMING_DATA_LENGTH"]] + (Z80.Memory[symbols["TLS_CONNECTION.INCOMING_DATA_LENGTH"] + 1] << 8);
+        if(x > 0) {
+            var address = Z80.Memory[symbols["TLS_CONNECTION.INCOMING_DATA_POINTER"]] + (Z80.Memory[symbols["TLS_CONNECTION.INCOMING_DATA_POINTER"] + 1] << 8);
+            var contents = GetOutputBuffer(x, address);
+            var wow = Encoding.ASCII.GetString(contents);
+        }
+        */
+        
         return Z80.A;
     }
 
@@ -430,15 +439,16 @@ internal class Z80Runner
         Z80.BC = (short)data.Length;
         SetInputBuffer(data, BUFFER_IN);
         Run("TLS_CONNECTION.SEND");
+        var x = Z80.Memory[0xF100] + (Z80.Memory[0xF101] << 8);
         return Z80.CF == 0;
     }
 
     public static byte[] TlsConnectionReceive(int length)
     {
-        Z80.HL = unchecked((short)BUFFER_OUT);
+        Z80.DE = unchecked((short)BUFFER_OUT);
         Z80.BC = (short)length;
         Run("TLS_CONNECTION.RECEIVE");
-        return GetOutputBuffer(Z80.BC, BUFFER_OUT);
+        return Z80.BC == 0 ? [] : GetOutputBuffer(Z80.BC, BUFFER_OUT);
     }
 
     public static void TlsConnectionClose()
