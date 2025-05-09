@@ -14,6 +14,8 @@
 	;are supported (received data is printed raw in the screen,
 	;and input data is sent raw to the TCP connection).
 
+	public UNAPI_CODE_BLOCK ;!!!
+	public WAIT_TLS_OPEN ;!!!
 
     extrn TLS_CONNECTION.INIT
     extrn TLS_CONNECTION.UPDATE
@@ -414,10 +416,11 @@ WAIT_OPEN2:
 	call RECORD_RECEIVER.INIT
 
 	ld a,(CON_NUM)
-	ld hl,CALL_UNAPI
+	ld hl,UNAPI_CODE_BLOCK
 	call DATA_TRANSPORT.INIT
 
-	ld b,0
+	ld hl,SNI ;!!!
+	ld b,SNI_END-SNI
 	call TLS_CONNECTION.INIT
 
 	print TLS_OPENING_S
@@ -454,14 +457,9 @@ MAIN_LOOP:	;
 
 	;--- First try to get incoming data and then print it
 
-	ld	a,(CON_NUM)
-	ld	b,a
 	ld	de,BUFFER
-	ld	hl,1024
-	ld	a,TCPIP_TCP_RCV
-	call	CALL_UNAPI
-	or	a
-	jp	nz,TCP_ERROR	;Error?
+	ld	bc,1024
+	call	TLS_CONNECTION.RECEIVE
 	ld	a,b
 	or	c
 	jr	z,END_RCV	;No data available?
@@ -501,26 +499,32 @@ END_RCV:	;
 	jr z,STATUS_OK
 
 TLS_IS_CLOSED:
+	print TLS_ERROR_S
+	ld a,(TLS_CONNECTION.ERROR_CODE)
+	ld ix,BUFFER
+	call BYTE2ASC
+	ld (ix),"$"
+	print BUFFER
 
-	;WIP
+	print TLS_SUB_ERROR_S
+	ld a,(TLS_CONNECTION.SUB_ERROR_CODE)
+	ld ix,BUFFER
+	call BYTE2ASC
+	ld (ix),"$"
+	print BUFFER
+
+	print TLS_ALERT_RECEIVED_S
+	ld a,(TLS_CONNECTION.ALERT_RECEIVED)
+	ld ix,BUFFER
+	call BYTE2ASC
+	ld (ix),"$"
+	print BUFFER
 
 	ld	a,(CON_NUM)
-	ld	b,a
-	ld	hl,0
-	ld	a,TCPIP_TCP_STATE
-	call	CALL_UNAPI
-	or	a
-	jp	nz,TCP_ERROR
-	ld	a,b
-	cp	4	;ESTABLISHED state
-	jr	z,STATUS_OK
-
-	ld	a,(CON_NUM)	;Otherwise, close and print
-	ld	b,a		;"Closed by remote peer" before terminating
-	ld	a,TCPIP_TCP_CLOSE
+	ld b,a
+	ld a,TCPIP_TCP_ABORT
 	call	CALL_UNAPI
 	print	TWO_NL_S
-	print	PEERCLOSE_S+1
 	jp	TERMINATE
 STATUS_OK:
 
@@ -635,16 +639,11 @@ GET_INPUT_L:	ld	a,255
 	ld	(hl),10
 	inc	bc
 
-	push	bc
-	pop	hl
-	ld	a,(CON_NUM)	;Sends the line to the connection
-	ld	b,a
-	ld	de,BUFFER+2
-	ld	c,1		;"Push" is specified
-	ld	a,TCPIP_TCP_SEND
-	call	CALL_UNAPI
-	or	a
-	jp	nz,TCP_ERROR
+	push bc
+	pop hl
+	ld hl,BUFFER+2
+	call TLS_CONNECTION.SEND
+	;TODO: Failed?
 
 	jr	END_KEY
 
@@ -1545,6 +1544,8 @@ CALL_UNAPI:	ex	af,af'
 
 DO_UNAPI:	jp	0
 
+UNAPI_CODE_BLOCK: jp CALL_UNAPI
+
 ;--- Code to call a DOS function
 
 DO_DOS:
@@ -1623,9 +1624,9 @@ ASTERISK_S:	db	"*** $"
 TLS_OPENING_S: db "Establishing TLS connection... $"
 TLS_OPENED_S:  db	"OK!",13,10,10
 	db	"*** Press F1 for help",13,10,10,"$"
-TLS_ERROR_S: db "--- TLS error code: $"
-TLS_SUB_ERROR_S: db "--- TLS sub error code: $"
-TLS_ALERT_RECEIVED_S: db "--- TLS alert received: $"
+TLS_ERROR_S: db 13,10,"--- TLS error code: $"
+TLS_SUB_ERROR_S: db 13,10,"--- TLS sub error code: $"
+TLS_ALERT_RECEIVED_S: db 13,10,"--- TLS alert received: $"
 
 	;* Host name resolution
 
@@ -1712,6 +1713,9 @@ NOTCPPU_S:	db	"*** This TCP/IP UNAPI implementation does not support",13,10
 ;--- UNAPI related
 
 TCPIP_S:	db	"TCP/IP",0
+
+SNI: db "tls13.1d.pw"
+SNI_END:
 
 ;--- Buffer for the remote host name
 

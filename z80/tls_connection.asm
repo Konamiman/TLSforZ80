@@ -25,6 +25,8 @@
     public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_ESTABLISHED    
     public TLS_CONNECTION.STATE
 
+    public TLS_CONNECTION.SEND_HANDSHAKE_RECORD ;!!!
+
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_RECORD
     public TLS_CONNECTION.SEND_HANDSHAKE_RECORD
@@ -1010,7 +1012,6 @@ SERVER_HELLO_ERROR_TO_ALERT_CODE:
 
 ;--- Send a handshake record
 ;    Input:  HL = Message header address
-;            BC = Message length
 
 SEND_HANDSHAKE_RECORD:
     push hl
