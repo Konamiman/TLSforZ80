@@ -37,6 +37,9 @@ INIT:
 ;    Output: Cy = 0: Ok, 1: Error
 
 SEND:
+    push ix
+    push iy
+
     ex de,hl
     push bc
     pop hl
@@ -67,6 +70,10 @@ SEND:
     pop bc
     pop de
     pop hl
+
+    pop iy
+    pop ix
+    
     ret
 
 
@@ -76,6 +83,8 @@ SEND:
 ;    Output: BC = Actual length received
 
 RECEIVE:
+    push ix
+    push iy
     ex de,hl
     push bc
     pop hl
@@ -84,6 +93,8 @@ RECEIVE:
     ld a,TCPIP_TCP_RCV
     call UNAPI_BLOCK
 
+    pop iy
+    pop ix
     or a
     ret z
     ld bc,0

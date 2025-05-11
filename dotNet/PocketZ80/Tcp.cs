@@ -87,8 +87,8 @@ internal partial class TcpIpUnapi
         if(connection == null)
             return ERR_NO_CONN;
 
-        if(!connection.CanSend())
-            return ERR_CONN_STATE;
+        /*if(!connection.CanSend())
+            return ERR_CONN_STATE;*/
 
         if((cpu.C & 0b11111100) != 0)
             return ERR_INV_PAR;

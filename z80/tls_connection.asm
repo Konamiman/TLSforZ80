@@ -26,6 +26,8 @@
     public TLS_CONNECTION.STATE
 
     public TLS_CONNECTION.SEND_HANDSHAKE_RECORD ;!!!
+    public TLS_CONNECTION.INCOMING_DATA_LENGTH ;!!!
+    public TLS_CONNECTION.SEND_APP_DATA_RECORD ;!!!
 
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_RECORD
@@ -452,7 +454,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     ld a,e
 
     cp MESSAGE_TYPE.ENCRYPTED_EXTENSIONS
-    jr z,.HANDLE_ENCRYPTED_EXTENSIONS
+    jp z,.HANDLE_ENCRYPTED_EXTENSIONS
     cp MESSAGE_TYPE.CERTIFICATE
     jr z,.HANDLE_CERTIFICATE
     cp MESSAGE_TYPE.CERTIFICATE_REQUEST
@@ -541,6 +543,20 @@ UPDATE_ON_HANDSHAKE_STATE:
     jr .UPDATE_FLAGS
 
 .HANDLE_CERTIFICATE:
+    if 0
+    push af ;!!!
+    push bc
+    push de
+    push hl
+    ld e,"$"
+    ld c,2
+    call 5
+    pop hl
+    pop de
+    pop bc
+    pop af
+    endif
+
     ld d,FLAGS.CERTIFICATE_RECEIVED
 
 .UPDATE_FLAGS:
@@ -1059,8 +1075,8 @@ SEND_APP_DATA_RECORD:
 ;--- Send a record that is not application data
 ;    (encryption will happen in-place)
 ;    Input:  A  = Record type
-;            HL = Record address
-;            BC = Record length
+;            HL = Record data address
+;            BC = Record data length
 ;    Output: Cy = 1 if error
 
 SEND_RECORD:

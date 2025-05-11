@@ -40,10 +40,10 @@ INIT:
     ld h,a
     ld de,RANDOM
     ld bc,RANDOM_SIZE
-    ;ldir
+    ldir
     ld de,SESSION_ID
     ld bc,RANDOM_SIZE
-    ;ldir
+    ldir
 
     pop bc
     pop hl

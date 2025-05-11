@@ -71,6 +71,19 @@ ENCRYPT:
     push bc
     push de
 
+    ; We'll write the content type byte right after the last data byte
+    ; (needed for the encryption), but unless we are doing in-place encryption
+    ; we need to restore the original byte at that address,
+    ; since this could be further data to be sent.
+
+    push hl
+    or a
+    sbc hl,de
+    pop hl
+    jr z,.IN_PLACE_ENCRYPT
+    ld (.CONTENT_TYPE),a
+.IN_PLACE_ENCRYPT:
+
     ; struct {
     ;   opaque content[TLSPlaintext.length];
     ;   ContentType type;
@@ -80,6 +93,21 @@ ENCRYPT:
     push hl
     push bc
     add hl,bc
+
+    push de
+    ld d,a
+    ld a,(.CONTENT_TYPE)
+    or a
+    ld a,d
+    jr z,.NO_SAVE_CONTENT_TYPE_OVERWRITE
+
+    ld (.SAVE_CONTENT_TYPE_ADDRESS),hl
+    ld a,(hl)
+    ld (.SAVE_CONTENT_TYPE_OVERWRITE),a
+    ld a,d
+.NO_SAVE_CONTENT_TYPE_OVERWRITE:
+    pop de
+
     ld (hl),a   ;Content type goes right after the data to encrypt
     pop bc
     inc bc
@@ -116,7 +144,24 @@ ENCRYPT:
     pop bc
 
     ld ix,CLIENT_NONCE+IV_SIZE-1
-    jp INC_SEQ
+    call INC_SEQ
+
+    ld hl,(.SAVE_CONTENT_TYPE_ADDRESS)
+    ld a,h
+    or l
+    ret z
+
+    ld a,(.SAVE_CONTENT_TYPE_OVERWRITE)
+    ld (hl),a
+    ld hl,0
+    ld (.SAVE_CONTENT_TYPE_ADDRESS),hl
+    ld a,h
+    ld (.SAVE_CONTENT_TYPE_OVERWRITE),a
+    ret
+
+.SAVE_CONTENT_TYPE_ADDRESS: dw 0
+.CONTENT_TYPE:
+.SAVE_CONTENT_TYPE_OVERWRITE: db 0
 
 
 ;--- Decrypt record

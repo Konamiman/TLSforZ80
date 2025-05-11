@@ -71,6 +71,7 @@ class Program
             }
 
             keepRunning &= connection.State == ConnectionState.Established;
+            var errorCodxe = connection.GetErrorCode();
         }
 
         var errorCode = connection.GetErrorCode();

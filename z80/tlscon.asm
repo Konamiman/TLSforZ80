@@ -16,6 +16,9 @@
 
 	public UNAPI_CODE_BLOCK ;!!!
 	public WAIT_TLS_OPEN ;!!!
+	public BUFFER ;!!!
+	public MAIN_LOOP ;!!!
+	public HANDLE_CLOSE ;!!!
 
     extrn TLS_CONNECTION.INIT
     extrn TLS_CONNECTION.UPDATE
@@ -193,6 +196,7 @@ NOMAPPER:
 
 	ld	a,#C9
 	ld	(SET_UNAPI),a
+	ld (UNSET_UNAPI),a
 	jr	OK_SET_UNAPI
 NO_UNAPI_P3:
 
@@ -411,24 +415,33 @@ WAIT_OPEN2:
 
 	;--- Initialize the TLS engine
 
-	ld hl,8000h
-	ld bc,4000h
+	ld hl,9000h
+	ld bc,3000h
 	call RECORD_RECEIVER.INIT
 
 	ld a,(CON_NUM)
 	ld hl,UNAPI_CODE_BLOCK
 	call DATA_TRANSPORT.INIT
 
-	ld hl,SNI ;!!!
-	ld b,SNI_END-SNI
+	;ld hl,SNI ;!!!
+	;ld b,SNI_END-SNI
+	ld b,0
 	call TLS_CONNECTION.INIT
 
 	print TLS_OPENING_S
 
 WAIT_TLS_OPEN:
+	ld e,"-"
+	ld c,2
+	call 5
+
 	ld	a,TCPIP_WAIT
 	call	CALL_UNAPI
 	call	CHECK_KEY	;To allow process abort with CTRL-C
+
+	ld	a,(#FBEC)	;Bit 2 of #FBEC is 0
+	bit	2,a	;when ESC is being pressed
+	jp	z,CLOSE_END
 
 	call TLS_CONNECTION.UPDATE
 	cp TLS_ESTABLISHED_STATE
@@ -436,6 +449,19 @@ WAIT_TLS_OPEN:
 	jp nz,TLS_IS_CLOSED
 
 	print TLS_OPENED_S
+
+	if 1
+	ld hl,HTTPDATA	;!!!
+	ld bc,HTTPDATA_END-HTTPDATA
+	call TLS_CONNECTION.SEND
+	jr MAIN_LOOP
+
+HTTPDATA:
+	db "GET / HTTP/1.1",13,10
+	db "Host: tls13.1d.pw",13,10
+	db 13,10
+HTTPDATA_END:
+	endif
 
 
 	;---------------------------
@@ -454,17 +480,19 @@ WAIT_TLS_OPEN:
 	;- Wait for the next interrupt (WAIT_INT) and repeat the loop.
 
 MAIN_LOOP:	;
+	call TLS_CONNECTION.UPDATE
 
 	;--- First try to get incoming data and then print it
 
 	ld	de,BUFFER
-	ld	bc,1024
+	ld	bc,256
 	call	TLS_CONNECTION.RECEIVE
 	ld	a,b
 	or	c
 	jr	z,END_RCV	;No data available?
 TCP_RCVOK:	;
 
+DOPRINT:
 	ld	hl,BUFFER
 
 PRNTLOOP:
@@ -485,7 +513,7 @@ PRNTLOOP:
 	ld	a,b
 	or	c
 	jr	nz,PRNTLOOP
-	jr	STATUS_OK
+	jp	STATUS_OK
 END_RCV:	;
 
 	;--- Check if the connection has lost the ESTABLISHED
@@ -499,6 +527,14 @@ END_RCV:	;
 	jr z,STATUS_OK
 
 TLS_IS_CLOSED:
+	ld	de,BUFFER
+	ld	bc,256
+	call	TLS_CONNECTION.RECEIVE
+	ld	a,b
+	or	c
+	jr nz,DOPRINT
+
+HANDLE_CLOSE:
 	print TLS_ERROR_S
 	ld a,(TLS_CONNECTION.ERROR_CODE)
 	ld ix,BUFFER
@@ -1524,11 +1560,11 @@ UNKCODE_S:	db	"000)$"
 ;--- Code to switch TCP/IP implementation on page 1, if necessary
 
 SET_UNAPI:
-	ld	a,(UNAPI_IS_SET)
-	or	a
-	ret	nz
-	dec	a
-	ld	(UNAPI_IS_SET),a
+	;ld	a,(UNAPI_IS_SET)
+	;or	a
+	;ret	nz
+	;dec	a
+	;ld	(UNAPI_IS_SET),a
 UNAPI_SLOT:	ld	a,0
 	ld	h,#40
 	call	ENASLT
@@ -1542,7 +1578,23 @@ CALL_UNAPI:	ex	af,af'
 	ex	af,af'
 	exx
 
-DO_UNAPI:	jp	0
+DO_UNAPI:	call	0
+
+	ex	af,af'
+	exx
+	call UNSET_UNAPI
+	exx
+	ex af,af'
+
+	ret
+
+UNSET_UNAPI:
+	ld	a,(TPASLOT1)
+	ld	h,#40
+	call	ENASLT
+
+	ld	a,(TPASEG1)	;Restores TPA on page 1
+	jp	PUT_P1
 
 UNAPI_CODE_BLOCK: jp CALL_UNAPI
 
