@@ -119,7 +119,7 @@ internal partial class TcpIpUnapi
             return ERR_CONN_STATE;
 
         var dataAddress = cpu.DE.ToUShort();
-        var dataLength = cpu.HL.ToUShort();
+        var dataLength = Math.Min( cpu.HL.ToUShort(), (ushort)128 ); //!!!
 
         cpu.BC = 0;
         cpu.HL = 0;
@@ -130,10 +130,12 @@ internal partial class TcpIpUnapi
 
         var data = connection.Receive(dataLength);
 
-        for(var i = 0; i < dataLength; i++)
-            cpu.Memory[dataAddress + i] = data[i];
+        if(data.Length > 0) {
+            for(var i = 0; i < dataLength; i++)
+                cpu.Memory[dataAddress + i] = data[i];
+        }
 
-        cpu.BC = dataLength.ToShort();
+        cpu.BC = data.Length.ToShort();
 
         return ERR_OK;
     }

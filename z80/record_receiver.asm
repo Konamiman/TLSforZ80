@@ -3,11 +3,16 @@
     public RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     public RECORD_RECEIVER.HANDSHAKE_HEADER
     public RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
+    public RECORD_RECEIVER.HAS_PARTIAL_RECORD
     extrn DATA_TRANSPORT.RECEIVE
     extrn DATA_TRANSPORT.HAS_IN_DATA
     extrn DATA_TRANSPORT.IS_REMOTELY_CLOSED
     extrn RECORD_ENCRYPTION.DECRYPT
     extrn RECORD_ENCRYPTION.TAG_SIZE
+
+    public RECORD_RECEIVER.GOT_FULL_RECORD ;!!!
+    public RECORD_RECEIVER.UPDATE ;!!!
+    public RECORD_RECEIVER.RECEIVE_DATA ;!!!
 
 def_error: macro name,code
 name: equ code
@@ -15,6 +20,26 @@ name: equ code
     endm
 
     module RECORD_RECEIVER
+
+print: macro xxx
+    if 0
+    push af
+    push bc
+    push de
+    push hl
+    push ix
+    push iy
+    ld e,"&xxx"
+    ld c,2
+    call 5
+    pop iy
+    pop ix
+    pop hl
+    pop de
+    pop bc
+    pop af
+    endif
+    endm
 
 def_error ERROR_NO_CHANGE, 0
 def_error ERROR_CONNECTION_CLOSED, 1
@@ -80,6 +105,12 @@ INIT_FOR_NEXT_RECORD:
     pop af
     ret
 
+HAS_PARTIAL_RECORD: ;Cy=1 if yes
+    ld a,(RECORD_TYPE)
+    or a
+    ret z
+    scf
+    ret
 
 ;--- Update
 ;    Input:  -
@@ -117,9 +148,11 @@ UPDATE:
 START_RECEIVING_RECORD:
     ld bc,5 ;Length of record header
     call RECEIVE_DATA
-    ret z   ;No data received (we don't care if it's error or not)
     or a
-    ret nz  ;Error
+    ret nz   ;Error
+    ld a,b
+    or c
+    ret z  ;No data received
 
     ;We assume we actually received 5 bytes (if we didn't receive zero bytes)
 
@@ -162,7 +195,7 @@ START_RECEIVING_RECORD:
     ld a,ERROR_RECORD_TOO_LONG
     jp nz,INIT_FOR_NEXT_RECORD
 
-    jr UPDATE
+    ;jr UPDATE
 
 
     ;--- Continue receiving a partially received record
@@ -170,9 +203,11 @@ START_RECEIVING_RECORD:
 CONTINUE_RECEIVING_RECORD:
     ld bc,(REMAINING_RECORD_SIZE)
     call RECEIVE_DATA
-    ret z   ;No data received (we don't care if it's error or not)
     or a
-    ret nz  ;Error
+    ret nz   ;Error
+    ld a,b
+    or c
+    ret z  ;No data received
 
     ld hl,(REMAINING_RECORD_SIZE)
     ld a,h
@@ -194,7 +229,11 @@ GOT_FULL_RECORD:
     ld bc,(RECORD_SIZE)
     push hl
     pop de
+
+    print 1
     call RECORD_ENCRYPTION.DECRYPT
+    print 2
+
     or a
     jr z,.DECRYPT_OK
     add ERROR_BAD_AUTH_TAG-1    ;1 = lowest error code from RECORD_ENCRYPTION.DECRYPT
@@ -439,9 +478,7 @@ DO_RECEIVE_DATA:
     sbc hl,bc
     ld (REMAINING_RECORD_SIZE),hl
 
-    ld a,b
-    or c
-    ld a,0
+    xor a
     ret
 
 

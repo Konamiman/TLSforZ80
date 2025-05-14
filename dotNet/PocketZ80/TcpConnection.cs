@@ -128,8 +128,8 @@ public class TcpConnection
 
     public byte[] Receive(int count)
     {
-        if(!CanReceive())
-            throw new InvalidOperationException("Can't receive data in the current connection state");
+        /*if(!CanReceive())
+            throw new InvalidOperationException("Can't receive data in the current connection state");*/
 
         var available = AvailableCount;
         if(available == 0)

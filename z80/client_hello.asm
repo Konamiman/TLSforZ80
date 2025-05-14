@@ -5,6 +5,9 @@
     public CLIENT_HELLO.SESSION_ID
     public CLIENT_HELLO.PUBLIC_KEY
 
+    public CLIENT_HELLO.MESSAGE ;!!
+    public CLIENT_HELLO.SERVER_NAME ;!!!
+
     ifdef DEBUGGING
 
     public CLIENT_HELLO.SERVER_NAME
@@ -176,6 +179,8 @@ SERVER_NAME_DATA_SIZE: dw 0
 SERVER_NAME_NAME_SIZE: dw 0    
 EXTENSIONS_END:
 SERVER_NAME: ds 128
+
+    ds 1+16 ;!!! - content type and auth tag
 
     endmod
 

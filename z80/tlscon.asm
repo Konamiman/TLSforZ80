@@ -19,6 +19,7 @@
 	public BUFFER ;!!!
 	public MAIN_LOOP ;!!!
 	public HANDLE_CLOSE ;!!!
+	public MAIN_LOOP ;!!!
 
     extrn TLS_CONNECTION.INIT
     extrn TLS_CONNECTION.UPDATE
@@ -415,37 +416,64 @@ WAIT_OPEN2:
 
 	;--- Initialize the TLS engine
 
-	ld hl,9000h
-	ld bc,3000h
+	ld hl,8000h
+	ld bc,4000h
 	call RECORD_RECEIVER.INIT
 
 	ld a,(CON_NUM)
 	ld hl,UNAPI_CODE_BLOCK
 	call DATA_TRANSPORT.INIT
 
-	;ld hl,SNI ;!!!
-	;ld b,SNI_END-SNI
+	ld hl,HOST_NAME
 	ld b,0
+GET_SNI_SIZE:
+	ld a,(hl)
+	or a
+	jr z,GET_SNI_SIZE_END
+	cp '/'
+	jr z,GET_SNI_SIZE_END
+	inc hl
+	inc b
+	jr GET_SNI_SIZE
+GET_SNI_SIZE_END:
+
+	ld hl,HOST_NAME
 	call TLS_CONNECTION.INIT
 
 	print TLS_OPENING_S
 
+	ld e,"o"
+	push de
 WAIT_TLS_OPEN:
-	ld e,"-"
+	pop de
+	ld a,e
+	xor "o" xor "."
+	ld e,a
+	push de
+	ld c,2
+	call 5
+
+	ld e,27 ;ESC
+	ld c,2
+	call 5
+	ld e,"D" ;Cursor left
 	ld c,2
 	call 5
 
 	ld	a,TCPIP_WAIT
 	call	CALL_UNAPI
-	call	CHECK_KEY	;To allow process abort with CTRL-C
+	;call	CHECK_KEY	;To allow process abort with CTRL-C
 
+	pop de
 	ld	a,(#FBEC)	;Bit 2 of #FBEC is 0
 	bit	2,a	;when ESC is being pressed
 	jp	z,CLOSE_END
+	push de
 
 	call TLS_CONNECTION.UPDATE
 	cp TLS_ESTABLISHED_STATE
 	jr c,WAIT_TLS_OPEN
+	pop de
 	jp nz,TLS_IS_CLOSED
 
 	print TLS_OPENED_S
@@ -454,11 +482,53 @@ WAIT_TLS_OPEN:
 	ld hl,HTTPDATA	;!!!
 	ld bc,HTTPDATA_END-HTTPDATA
 	call TLS_CONNECTION.SEND
-	jr MAIN_LOOP
+
+	;ld e,"!"
+	;ld c,2
+	;call 5
+
+	jp MAIN_LOOP
 
 HTTPDATA:
+	;db "GET /v1/tlsinfo.json HTTP/1.1",13,10
+	;db "Host: check-tls.akamai.io",13,10
+	;db "Connection: close",13,10
+	;db "User-Agent: TLS console for the TCP/IP UNAPI 1.0 - by Konamiman",13,10
+	
+	if 1
+
 	db "GET / HTTP/1.1",13,10
 	db "Host: tls13.1d.pw",13,10
+
+	endif
+
+	if 0
+
+	db "GET / HTTP/1.1",13,10
+	db "Host: konamiman.com",13,10
+
+	endif
+
+	if 0
+
+	db "POST /2/file_requests/list_v2 HTTP/1.1",13,10
+	db "Host: api.dropboxapi.com",13,10
+	db "Content-Length: 0",13,10
+	db "Authorization: Bearer "
+	db "sl.u.AFsJ1VeKJGo9-TXDufSyTRAOF3qMvNE5tNCpxMN_lqKVgTYGKoNXegdtDHtww5DHCASSKmC8sFD7ygTYyess-"
+	db "jumDdniqAY7pZ4CvPM70fHKlhF8ZBfNd2CX0aXLiSZnQRZs5mdAydzyfabRC49ZAw8GVUgwEcX1_VdZn9Gk27uf4oru"
+	db "u__m7T3RiBXuz2Wi2KLM0PeOK_UrUMDaildG_HDNtWK7oAEg1G045dwUwmGaHOgrOhJ6b7kbqBhXD6EsDO7TR2AhIWeb"
+	db "S9sRWJkJgeuwlKAogtIQXPObiWoClvhhNQecWWOCdodLIWXGvv-ha6-Mw6DYt8YK0N-GuSJnkGTBXH3m4xaUkaXkIvgM"
+	db "jeb1d-pD4Ylb0eHMNKFf7orx957odcErO6n5VDQUvb1JElU4-sRyUrwBW3Cxo4b8uLq1fKTkZAkW8fyqJOHP0YD_dPBNF"
+	db "syVds40xIHEUBNcPdjU151WpuUFvfS_NjBOp0kmrAuw_DdzLgEu3CKrxLjleGL_F2TKSh_XbbQvvYew9cYW3hHFBFr-1zR"
+	db "fcTRwFcYaSR6T8niF3TJXj0YpDSWs0iVf8ylqkVxoM8Y5dPkWUVnQfkeehmq_n1L_febCiC4hrwwqEEY1btzvDPSLAbXoK"
+	db "Pit5wJWrP-veMpF1vWhxxYCU_eAQ4NGFQXzdHWs-dCQQOMivLx_ZcYrWAiFievnmK8NbgjvhY6RcoIOe-cKZxYFl2cX_K9"
+	db "gGHgoG8HiIHOdUB5u9hvFPkVu4SjoHX3ws3s1Ca5Iypt5u6w1ta5lBskpzOhBJyObRoHx3lsSDGq7z3hb_gsRJPfqFcKdhWO7D_IkPnNNKqdtwXC_JA4UPdbLTJ78Kx7o1bFGIzm5ZFMv2EML0bXbg_x4t3k--pUQHMlgGZ6skGMLcoA0EZSFwoU9VaSQ2dD2ekQ6BYddl2FKdAQB3IzAHhbV7OXaQ_I6cnN04GCubJMz5s8VMcjqvPHd5ppDXSJV6cWH-SKCmKRfVHV1CqxvdUNUEPLoLsAs3wSnB6llriK21xjcNj5dFN_KhWwgSQqh9c8jl475o-5WOVD-ZrphEap4-oNyB2zTIqSMq5QK8cwO-i5yQ0LAsR_pGYjyYwmyDB5wUvpo8xDgRtAUV7gOeo_HE7k0ihU_rxrkPG1nUM27COvJmJsMa-PDGfQi4jo7imlGDc1zMH8tP8q0vzZaM4zDANTBe_F0NKznAUUBHNgwZog5fmzEaPQpAFHIQIx1SIWcOzsAMjOtcoQI9iGelS7n4ZfLwV-2qgWUOe2jaOTZ5_gBUPxeFVnLLif0u5phIPAaYs-l9plX9g"
+	db 13,10
+
+	endif
+
+	db "Connection: close",13,10	
 	db 13,10
 HTTPDATA_END:
 	endif
@@ -480,7 +550,16 @@ HTTPDATA_END:
 	;- Wait for the next interrupt (WAIT_INT) and repeat the loop.
 
 MAIN_LOOP:	;
+	ld	a,TCPIP_WAIT
+	call	CALL_UNAPI
+
 	call TLS_CONNECTION.UPDATE
+
+	ld a,(CON_NUM)
+    ld b,a
+    ld hl,0
+    ld a,TCPIP_TCP_STATE
+	call CALL_UNAPI
 
 	;--- First try to get incoming data and then print it
 
@@ -502,6 +581,17 @@ PRNTLOOP:
 
 	push	bc	;Print out data character by character.
 	ld	a,(hl)	;We can't use _STROUT function call,
+	cp 10
+	jr nz,NO10
+
+	push hl
+	ld e,13
+	ld c,_CONOUT
+	call DO_DOS
+	pop hl
+	ld a,10
+
+NO10:
 	inc	hl	;since we don't know if any "$" character
 	push	hl	;is contained in the string.
 	ld	e,a
@@ -524,7 +614,7 @@ END_RCV:	;
 
 	call TLS_CONNECTION.UPDATE
 	cp TLS_ESTABLISHED_STATE
-	jr z,STATUS_OK
+	jp z,STATUS_OK
 
 TLS_IS_CLOSED:
 	ld	de,BUFFER
@@ -535,26 +625,35 @@ TLS_IS_CLOSED:
 	jr nz,DOPRINT
 
 HANDLE_CLOSE:
-	print TLS_ERROR_S
 	ld a,(TLS_CONNECTION.ERROR_CODE)
+	or a
+	jr z,.1
 	ld ix,BUFFER
 	call BYTE2ASC
 	ld (ix),"$"
+	print TLS_ERROR_S
 	print BUFFER
+.1:
 
-	print TLS_SUB_ERROR_S
 	ld a,(TLS_CONNECTION.SUB_ERROR_CODE)
+	or a
+	jr z,.2
 	ld ix,BUFFER
 	call BYTE2ASC
 	ld (ix),"$"
+	print TLS_SUB_ERROR_S	
 	print BUFFER
+.2:
 
-	print TLS_ALERT_RECEIVED_S
 	ld a,(TLS_CONNECTION.ALERT_RECEIVED)
+	or a
+	jr z,.3
 	ld ix,BUFFER
 	call BYTE2ASC
 	ld (ix),"$"
+	print TLS_ALERT_RECEIVED_S	
 	print BUFFER
+.3:
 
 	ld	a,(CON_NUM)
 	ld b,a
@@ -1646,8 +1745,8 @@ MISSPAR_S:	db	"*** Missing parameter(s)",13,10,"$"
 ERROR_S:	db	"*** ERROR: $"
 OPENING_S:	db	"Opening connection (press ESC to cancel)... $"
 RESOLVING_S:	db	"Resolving host name... $"
-OPENED_S:	db	"OK!",13,10,10
-	db	"*** Press F1 for help",13,10,10,"$"
+OPENED_S:	db	"OK!",13,10,10,"$"
+	;db	"*** Press F1 for help",13,10,10,"$" ;!!!
 HELP_S:	db	13,10,"*** F1: Show this help",13,10
 	db	"*** F2: Toggle line/character mode",13,10
 	db	"        Current mode is: "
@@ -1766,14 +1865,11 @@ NOTCPPU_S:	db	"*** This TCP/IP UNAPI implementation does not support",13,10
 
 TCPIP_S:	db	"TCP/IP",0
 
-SNI: db "tls13.1d.pw"
-SNI_END:
-
 ;--- Buffer for the remote host name
 
-HOST_NAME:	;
+HOST_NAME:	ds 128
 
 ;--- Generic temporary buffer for data send/receive
 ;    and for parameter parsing
 
-BUFFER:	equ	HOST_NAME+256
+BUFFER:	ds 256
