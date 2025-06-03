@@ -19,19 +19,21 @@ public abstract class TestBase
     protected const byte TLS_HANDSHAKE_TYPE_DUMMY_2 = 200;
 
     protected static Z80Processor Z80;
-    protected static Z80Watcher watcher;
+    protected static Z80Watcher watcher = null;
 
     protected Dictionary<string, ushort> symbols = [];
     protected byte encryptedRecordType;
     protected bool badAuthTag;
     protected bool recordAllZeros;
     protected byte[] z80ProgramBytes;
+    protected int? outputBufferSize = null;
 
     [OneTimeSetUp]
     protected void OneTimeSetUp()
     {
         Z80 = new Z80Processor();
         Z80.AutoStopOnRetWithStackEmpty = true;
+        symbols.Clear();
 
         var z80Codedir = Path.GetFullPath(" ../../../../../../../z80", Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
         var files = Directory.GetFiles(z80Codedir, "*.asm");
@@ -44,11 +46,15 @@ public abstract class TestBase
         //We need aes.asm to be assembled first
         files = files.OrderBy(x => Path.GetFileNameWithoutExtension(x) == "aes" ? "a" : Path.GetFileNameWithoutExtension(x)).ToArray();
 
+        List<(string, ushort)> predefinedSymbols = [("DEBUGGING", 0xFFFF)];
+        if(outputBufferSize.HasValue) {
+            predefinedSymbols.Add(("TLS_CONNECTION.OUTPUT_DATA_BUFFER_LENGTH", outputBufferSize.Value.ToUShort()));
+        }
         foreach(var file in files) {
             var assemblyResult = AssemblySourceProcessor.Assemble(File.ReadAllText(file), new AssemblyConfiguration() {
                 BuildType = BuildType.Relocatable,
                 GetStreamForInclude = fileName => File.OpenRead(Path.Combine(Path.GetDirectoryName(file), fileName)),
-                PredefinedSymbols = [("DEBUGGING", 0xFFFF)]
+                PredefinedSymbols = predefinedSymbols.ToArray()
             });
 
             if(assemblyResult.HasErrors) {
@@ -101,6 +107,9 @@ public abstract class TestBase
             File.Delete(file.Item1);
         }
 
+        if(watcher is not null) {
+            watcher.Dispose();
+        }
         watcher = new Z80Watcher(Z80);
         foreach(var symbol in symbols) {
             watcher.Symbols.Add(symbol.Key, symbol.Value);
@@ -242,6 +251,7 @@ public abstract class TestBase
     public virtual void TearDown()
     {
         watcher.RemoveAllWatches();
+        outputBufferSize = null;
     }
 
     protected void AssertMemoryContents(int address, byte[] expectedContents)
@@ -345,5 +355,12 @@ public abstract class TestBase
         Z80.Memory[3] = 0xC9; // RET
 
         Run(0);
+    }
+
+    protected void ReassembleWithDifferentOutputBufferSize(int size)
+    {
+        outputBufferSize = size;
+        OneTimeSetUp();
+        SetUp();
     }
 }

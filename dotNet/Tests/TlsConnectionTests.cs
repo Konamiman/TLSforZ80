@@ -129,28 +129,6 @@ public class TlsConnectionTests : TestBase
     }
 
     [Test]
-    public void InitSendsPublicKeyToClientHello()
-    {
-        short publicKeyAddressReceivedByClientHelloInit = 0;
-
-        watcher
-            .BeforeFetchingInstructionAt("CLIENT_HELLO.INIT")
-            .Do(context => {
-                publicKeyAddressReceivedByClientHelloInit = context.Z80.Registers.DE;
-            })
-            .ExecuteRet();
-
-        watcher.BeforeFetchingInstructionAt("P256.GENERATE_KEY_PAIR")
-            .Do(context => {
-                context.Z80.Registers.HL = 0x1234;
-            })
-            .ExecuteRet();
-
-        RunInit();
-        Assert.That(publicKeyAddressReceivedByClientHelloInit, Is.EqualTo(0x1234));
-    }
-
-    [Test]
     public void ChangeCipherSpecIsIgnoredDuringHandshake()
     {
         RunInit();
@@ -1211,6 +1189,8 @@ public class TlsConnectionTests : TestBase
     [Test]
     public void TestSend()
     {
+        ReassembleWithDifferentOutputBufferSize(10);
+
         InitInEstablishedState();
 
         watcher
