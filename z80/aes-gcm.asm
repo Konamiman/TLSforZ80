@@ -1,3 +1,33 @@
+        title	TLS for Z80 by Konamiman
+	    subttl	AES-128-GCM algorithm implementation
+
+.COMMENT \
+
+Implementation of the AES-128-GCM encryption algorithm as specified in
+https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf
+
+Usage:
+
+To encrypt:
+  1. Call INIT passing the encryption key, IV and the additional data.
+  2. Call ENCRYPT passing the data to encrypt.
+     This can be called multiple times, however all times
+     except for the last one the passed length must be a multiple of 16.
+  3. Call FINISH to calculate and get the authentication tag.
+
+To decrypt:
+  1. Call INIT passing the encryption key, IV and the additional data.
+  2. Call DECRYPT passing the data to decrypt.
+     Like ENCRYPT, this can be called multiple times but with the same
+     input length restrictions.
+
+To get the auth tag of received encrypted data:
+  Same as to encrypt, but call AUTHTAG instead of ENCRYPT passing the address
+  of the encrypted block in IX (AUTHTAG too requires all blocks except the last one 
+  to be multiples of 16 bytes).
+
+\
+
     public AES_GCM.INIT
     public AES_GCM.ENCRYPT
     public AES_GCM.FINISH
@@ -12,32 +42,6 @@
     root AES.INIT
     root AES.ENCRYPT
     root AES.DECRIPT 
-
-;--- AES-128-GCM encryption engine for Z80
-;    Algorithm specification: https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf
-;
-;    Depends on aes.asm
-;
-;    Usage:
-;
-;    To encrypt:
-;      1. Call INIT passing the encryption key, IV and the additional data.
-;      2. Call ENCRYPT passing the data to encrypt.
-;         This can be called multiple times, however all times
-;         except for the last one the passed length must be a multiple of 16.
-;      3. Call FINISH to calculate and get the authentication tag.
-;
-;    To decrypt:
-;      1. Call INIT passing the encryption key, IV and the additional data.
-;      2. Call DECRYPT passing the data to decrypt.
-;         Like ENCRYPT, this can be called multiple times but with the same
-;         input length restrictions.
-;
-;    To get the auth tag of received encrypted data:
-;      Same as to encrypt, but call AUTHTAG instead of ENCRYPT
-;      passing the address of the encrypted block in IX
-;      (AUTHTAG too requires all blocks except the last one 
-;       to be multiples of 16 bytes).
 
 
 ;--------------------------------------------------------------------

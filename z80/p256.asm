@@ -1,4 +1,18 @@
-    ;Note: this file is scaffolding intended to run in an emulator.
+	title	TLS for Z80 by Konamiman
+	subttl	Key and shared secret generation using the P256 curve
+
+.COMMENT \
+
+This file is actually a "working stub". It always uses the number 1 as the private key,
+this implies that the shared secret will be the first half of the peer's public key.
+And indeed, that means that the connection will be effectively insecure.
+
+If you want to use some external help to generate proper key pairs
+(or if you somehow manage to implement the P256 curve in pure Z80 assembler!)
+just adjust P256.GENERATE_KEY_PAIR and P256.GENERATE_SHARED_KEY while keeping
+their input and output behaviors.
+
+\
     
     public P256.GENERATE_KEY_PAIR
     public P256.GENERATE_SHARED_KEY
@@ -6,7 +20,7 @@
     module P256
 
 
-;--- Generate P256 key pair, store the private key internally,
+;--- Generate a P256 key pair, store the private key internally,
 ;    and return the public key.
 ;
 ;    Input: HL = Destination address for the public key (64 bytes)
@@ -32,7 +46,7 @@ TRIVIAL_LOCAL_PUBLIC_KEY:
 
 
 
-;--- Generate a shared secret from the private key generated
+;--- Generate a shared secret from the private key previously generated
 ;    with GENERATE_KEY_PAIR and the peer public key.
 ;
 ;    Input:  HL = Address of the remote public key

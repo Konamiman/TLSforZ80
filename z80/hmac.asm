@@ -1,3 +1,15 @@
+    title	TLS for Z80 by Konamiman
+	subttl	HMAC algorithm
+
+.COMMENT \
+
+This module implements the HMAC-SHA256 hashing.
+Algorithm specification: https://datatracker.ietf.org/doc/html/rfc2104
+
+See the comment for the RUN routine.
+
+\
+
 	public HMAC.RUN
 	extrn SHA256.RUN
 
@@ -5,12 +17,7 @@
 
 	root SHA256.RUN
 
-;--- HMAC-SHA256 hashing routine for Z80
-;    Algorithm specification: https://datatracker.ietf.org/doc/html/rfc2104
-;
-;    Depends on sha256.asm
-;
-;    Usage:
+;--- HMAC-SHA256 hashing routine
 ;    
 ;    To hash a short message in one single step, call the routine with these parameters:
 ;            A  = 3

@@ -1,3 +1,29 @@
+    title	TLS for Z80 by Konamiman
+	subttl	HKDF algorithm
+
+.COMMENT \
+
+This module has code to derive the handshake and application keys for the TLS connection.
+Algorithm specification: https://datatracker.ietf.org/doc/html/rfc5869
+
+DERIVE_AP_KEYS assumes that DEVK_SECRET_TMP contains handshake_secret, this will be true
+after DERIVE_HS_KEYS is executed. Therefore these two must be executed in that order:
+DERIVE_HS_KEYS first, then DERIVE_AP_KEYS.
+
+The generated keys will be stored starting at CLIENT_SECRET, in this order:
+
++0:   CLIENT_SECRET: client_handshake/application_traffic_secret (32 bytes)
++32:  SERVER_SECRET: server_handshake/application_traffic_secret (32 bytes)
++64:  CLIENT_KEY:    client_handshake/application_key (16 bytes)
++80:  SERVER_KEY:    server_handshake/application_key (16 bytes)
++96:  CLIENT_IV:     client_handshake/application_iv (12 bytes)
++108: SERVER_IV:     server_handshake/application_iv (12 bytes)
+
+There are also routines de compute the key for the Finished message
+and to update the traffic keys at the request of the peer.
+
+\
+
     public HKDF.DERIVE_HS_KEYS
     public HKDF.DERIVE_AP_KEYS
     public HKDF.COMPUTE_FINISHED_KEY
@@ -17,27 +43,9 @@
     root SHA256.HASH_OF_EMPTY
 
 
-;--- Z80 code for the derivation of handshake and application keys for TLS
-;    Algorithm specification: https://datatracker.ietf.org/doc/html/rfc5869
-;
-;    Input: IX = Address of the shared secret (for DERIVE_HS_KEYS only)
-;           HL = Address of hash of handshake messages (32 bytes)
-;
-;    DERIVE_AP_KEYS assumes that DEVK_SECRET_TMP contains handshake_secret,
-;    this will be true after DERIVE_HS_KEYS is executed.
-;    Therefore these two must be executed in that order: DERIVE_HS_KEYS first,
-;    then DERIVE_AP_KEYS.
-;
-;    The generated keys will be stored starting at CLIENT_SECRET, in this order:
-;
-;    +0:   CLIENT_SECRET: client_handshake/application_traffic_secret (32 bytes)
-;    +32:  SERVER_SECRET: server_handshake/application_traffic_secret (32 bytes)
-;    +64:  CLIENT_KEY:    client_handshake/application_key (16 bytes)
-;    +80:  SERVER_KEY:    server_handshake/application_key (16 bytes)
-;    +96:  CLIENT_IV:     client_handshake/application_iv (12 bytes)
-;    +108: SERVER_IV:     server_handshake/application_iv (12 bytes)
-
-    ;--- Handshake keys
+    ;--- Derive handshake keys
+    ;    Input: IX = Address of the shared secret (for DERIVE_HS_KEYS only)
+    ;           HL = Address of hash of handshake messages (32 bytes)
 
 DERIVE_HS_KEYS:    ;Handshake keys
     ld de,"sh"
@@ -62,7 +70,9 @@ DERIVE_HS_KEYS:    ;Handshake keys
 
     jr DERIVE_KEYS_COMMON
 
-    ;--- Application keys
+
+    ;--- Derive application keys
+    ;    Input: HL = Address of hash of handshake messages (32 bytes)    
 
 DERIVE_AP_KEYS:    ;Application keys
     ld de,"pa"
@@ -106,7 +116,8 @@ DERIVE_AP_KEYS:    ;Application keys
     ld a,3
     call HMAC.RUN
 
-    ;--- Common keys
+
+    ;--- Derive common keys
 
 DERIVE_KEYS_COMMON:
 

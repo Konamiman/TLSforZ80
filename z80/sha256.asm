@@ -1,3 +1,15 @@
+    title	TLS for Z80 by Konamiman
+	subttl	SHA256 hashing
+
+.COMMENT \
+
+This module implements the SHA256 hash.
+Algorithm specification: https://datatracker.ietf.org/doc/html/rfc6234
+
+See the comment for the RUN routine.
+
+\
+
     public SHA256.RUN
     public SHA256.HASH_OF_EMPTY
     public SHA256.SAVE_STATE
@@ -8,9 +20,6 @@
     module SHA256
 
 ;--- SHA256 hashing engine for Z80
-;    Algorithm specification: https://datatracker.ietf.org/doc/html/rfc6234
-;
-;    Usage:
 ;
 ;    To hash a short message in one single step, call SHA256 with these parameters:
 ;    A  = 3

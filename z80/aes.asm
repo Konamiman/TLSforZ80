@@ -1,19 +1,26 @@
+	title	TLS for Z80 by Konamiman
+	subttl	AES algorithm implementation
+
+.COMMENT \
+
+Implementation of the AES algorithm as specified in https://doi.org/10.6028/NIST.FIPS.197-upd1
+
+Usage:
+1. Call INIT passing the encryption key.
+2. Call ENCRYPT and DECRYPT.
+
+NOTE: The substitution tables must be located at a 256 byte boundary in memory.
+
+\
+
     public AES.INIT
     public AES.ENCRYPT
     public AES.DECRYPT
 
     module AES
 
-;--- AES algorithm for Z80
-;    Algorithm specification: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf
-;
-;    Usage:
-;
-;    1. Call INIT passing the encryption key.
-;    2. Call ENCRYPT and DECRYPT.
 
-
-;ds (256-($ mod 256)) ;align 256
+;   align 256
 
 
     ;--- Byte substitution tables

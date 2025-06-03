@@ -1,3 +1,41 @@
+	title	TLS for Z80 by Konamiman
+	subttl	TLS connection handler
+
+.COMMENT \
+
+This is the "main" file that handles a TLS connection.
+It contains the entry points that allow user applications to establish a connection,
+check its state and send and receive data.
+
+Instructions for use in applications:
+
+1. Call RECORD_RECEIVER.INIT (see record_receiver.asm), this needs to be done only once
+2. Initialize the data transport, this will usually mean opening a TCP connection
+3. Call TLS_CONNECTION.INIT
+4. Call TLS_CONNECTION.UPDATE until the connection state is TLS_CONNECTION.STATE.ESTABLISHED
+5. Use TLS_CONNECTION.SEND and TLS_CONNECTION.RECEIVE to send and receive data
+6. Call TLS_CONNECTION.UPDATE, if the connection state is still TLS_CONNECTION.STATE.ESTABLISHED
+   then goto 5, or call TLS_CONNECTION.CLOSE if you don't have anything else to send
+7. If the connection is no longer established you won't be able to send more data,
+   close the connection with TLS_CONNECTION.CLOSE and then optionally check
+   TLS_CONNECTION.ERROR_CODE, TLS_CONNECTION.SUB_ERROR_CODE and TLS_CONNECTION.ALERT_RECEIVED
+
+Note that you need to implement the data transport layer for your system,
+see data_transport.asm which is a stub with the signature of the required methods
+(or you can use msx/unapi.asm if you are developong an application for MSX).
+You may also want to include tls_connection_constants.asm in your own code.
+
+You can have only one connection open at a given time. You can start over at any time
+after the connection is closed (you don't need to run RECORD_RECEIVER.INIT again, though).
+
+NOTE! By default TLS connections will actually be insecure due to how the shared secret derivation
+is implemented, see p256.asm. You may want to use external hardware for generating a proper
+private and public key pair, if so go ahead and reimplement the public routines in p256.asm as appropriate.
+
+\
+
+    include "tls_connection_constants.asm"
+
     public TLS_CONNECTION.INIT
     public TLS_CONNECTION.UPDATE
     public TLS_CONNECTION.CAN_SEND
@@ -130,26 +168,6 @@ OUTPUT_DATA_BUFFER_LENGTH: equ 128
 
     .relab
 
-    module STATE
-
-INITIAL: equ 0
-HANDSHAKE: equ 1
-ESTABLISHED: equ 2
-LOCALLY_CLOSED: equ 3
-REMOTELY_CLOSED: equ 4
-FULL_CLOSED: equ 5
-
-    endmod
-
-    module RECORD_TYPE
-
-CHANGE_CIHPER_SPEC: equ 20
-ALERT: equ 21
-HANDSHAKE: equ 22
-APP_DATA: equ 23
-
-    endmod
-
     module MESSAGE_TYPE
 
 SERVER_HELLO: equ 2
@@ -163,41 +181,12 @@ KEY_UPDATE: equ 24
 
     endmod
 
-    module ERROR_CODE
+    module RECORD_TYPE
 
-LOCAL_CLOSE: equ 1
-ALERT_RECEIVED: equ 2
-RECEIVED_RECORD_DECODE_ERROR: equ 3
-CONNECTION_CLOSED_IN_HANDSHAKE: equ 4
-UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE: equ 5
-UNEXPECTED_RECORD_TYPE_IN_ESTABLISHED: equ 6
-UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE: equ 7
-UNEXPECTED_HANDSHAKE_TYPE_IN_ESTABLISHED: equ 8
-SECOND_SERVER_HELLO_RECEIVED: equ 9
-INVALID_SERVER_HELLO: equ 10
-UNALLOWED_HANDSHAKE_TYPE_BEFORE_SERVER_HELLO: equ 11
-FINISHED_BEFORE_CERTIFICATE: equ 12
-BAD_FINISHED: equ 13
-BAD_MAX_FRAGMENT_LEGTH: equ 14
-INVALID_KEY_UPDATE: equ 15
-UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE: equ 16
-CONNECTION_CLOSED_IN_ESTABLISHED: equ 17
-
-    endmod
-
-    module ALERT_CODE
-
-CLOSE_NOTIFY: equ 0
-USER_CANCELED: equ 90
-BAD_RECORD_MAC: equ 20
-RECORD_OVERFLOW: equ 22
-DECODE_ERROR: equ 50
-DECRYPT_ERROR: equ 51
-INTERNAL_ERROR: equ 80
-UNEXPECTED_MESSAGE: equ 10
-HANDSHAKE_FAILURE: equ 40
-PROTOCOL_VERSION: equ 70
-ILLEGAL_PARAMETER: equ 47
+CHANGE_CIHPER_SPEC: equ 20
+ALERT: equ 21
+HANDSHAKE: equ 22
+APP_DATA: equ 23
 
     endmod
 
@@ -208,6 +197,7 @@ CERTIFICATE_RECEIVED: equ 2
 CERTIFICATE_REQUESTED: equ 4
 
     endmod
+
 
 
 ;--- Initialize the connection.

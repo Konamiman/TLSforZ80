@@ -1,3 +1,13 @@
+    title	TLS for Z80 by Konamiman
+	subttl	ClientHello message
+    
+.COMMENT \
+
+This file contains one single method that will compose a ClientHello message
+from a server name (for the corresponding extension) and a P256 public key.
+
+\
+
     public CLIENT_HELLO.INIT
     public CLIENT_HELLO.MESSAGE
     public CLIENT_HELLO.MESSAGE_HEADER
@@ -20,12 +30,12 @@
 RANDOM_SIZE: equ 32
 PUBLIC_KEY_SIZE: equ 64
 
-;--- Init
+
+;--- Initialize the message and the associated variables (e.g. SIZE)
 ;    Assumes that public key has been copied to PUBLIC_KEY
 ;
 ;    Input:  HL = Address of "server name"
 ;            B  = Length of "server name" (max 128 bytes!)
-;            DE = Address of public key
 ;    Output: HL = Address of CLIENT_HELLO.MESSAGE
 ;            BC = Value of CLIENT_HELLO.SIZE
 ;            The message will be preceded by a proper 4 byte handshake message header.
