@@ -30,6 +30,7 @@
     public TLS_CONNECTION.SEND_APP_DATA_RECORD ;!!!
 
     ifdef DEBUGGING
+    public TLS_CONNECTION.SEND_DATA
     public TLS_CONNECTION.SEND_RECORD
     public TLS_CONNECTION.SEND_HANDSHAKE_RECORD
     public TLS_CONNECTION.SEND_ALERT_RECORD
@@ -86,9 +87,7 @@
 
     module TLS_CONNECTION
 
-    ifdef DEBUGGING
-OUTPUT_DATA_BUFFER_LENGTH: equ 10
-    else
+    ifndef TLS_CONNECTION.OUTPUT_DATA_BUFFER_LENGTH
 OUTPUT_DATA_BUFFER_LENGTH: equ 128
     endif
 
@@ -823,39 +822,10 @@ SEND:
     call CAN_SEND
     pop bc
     pop hl
-    jr c,.LOOP
+    ld a,RECORD_TYPE.APP_DATA
+    jp c,SEND_DATA
     ccf
     ret
-
-.LOOP:
-    push bc ;Remaining data length
-    push hl ;Data address
-    ld hl,OUTPUT_DATA_BUFFER_LENGTH
-    or a
-    sbc hl,bc
-    jr nc,.GO
-    ld bc,OUTPUT_DATA_BUFFER_LENGTH
-.GO:
-
-    pop hl      ;Data address
-    push hl
-    push bc     ;Chunk size
-    call SEND_APP_DATA_RECORD
-    pop bc      ;Chunk size
-    pop de      ;Data address
-    pop hl      ;Remaining data length
-    ret c       ;Error sending record
-
-    or a
-    sbc hl,bc   ;Updated remaining data length
-    ret z       ;No more data left to send
-
-    ex de,hl    ;Data address to HL again, DE is remaining length
-    add hl,bc   ;Updated data address
-
-    push de
-    pop bc      ;Remaining data length to BC again
-    jr .LOOP
 
 
 ;--- Receive data
@@ -1065,60 +1035,92 @@ SEND_HANDSHAKE_RECORD:
 
 .SEND:
     ld a,RECORD_TYPE.HANDSHAKE
-    jr SEND_RECORD
+    ;jr SEND_DATA
 
 
-;--- Send an application data record
-;    Input:  HL = Data address
-;            BC = Data length (max OUTPUT_DATA_BUFFER_LENGTH)
+;--- Send handshake or application data.
+;    Input:  A  = Record type
+;            HL = Data address
+;            BC = Data length
+;    Output: Cy = 1 if error
 
-SEND_APP_DATA_RECORD:
-    ld a,RECORD_TYPE.APP_DATA
+SEND_DATA:
+    ld d,a
+    ld a,(FLAGS)
+    and FLAGS.HAS_KEYS
+    ld a,d
+    jr z,SEND_RECORD
+
+    ; We have encryption keys, so we need to encrypt the data.
+    ; We'll encrypt to OUTPUT_DATA_BUFFER, and we'll send the data
+    ; in multiple records if it's larger than OUTPUT_DATA_BUFFER_LENGTH.
+
+.LOOP:
+    push bc ;Remaining data length
+    push hl ;Data address
+    ld hl,OUTPUT_DATA_BUFFER_LENGTH
+    or a
+    sbc hl,bc
+    jr nc,.GO
+    ld bc,OUTPUT_DATA_BUFFER_LENGTH
+.GO:
+
+    pop hl      ;Data address
+    push hl
+    push bc     ;Chunk size
+    push af     ;Record type
+    call .SEND_DATA_CHUNK_AS_ENCRYPTED_RECORD
+    jr c,.ERROR
+    pop af      ;Record type
+    or a        ;To bypass "ret c"
+.NEXT:
+    pop bc      ;Chunk size
+    pop de      ;Data address
+    pop hl      ;Remaining data length
+    ret c       ;Error sending record
+
+    or a
+    sbc hl,bc   ;Updated remaining data length
+    ret z       ;No more data left to send
+
+    ex de,hl    ;Data address to HL again, DE is remaining length
+    add hl,bc   ;Updated data address
+
+    push de
+    pop bc      ;Remaining data length to BC again
+    jr .LOOP
+
+.ERROR:
+    pop af
+    jr .NEXT
+
+
+.SEND_DATA_CHUNK_AS_ENCRYPTED_RECORD:
     ld de,OUTPUT_DATA_BUFFER
     push de
-    jr SEND_RECORD.ENCRYPT_TO_DE
+    call RECORD_ENCRYPTION.ENCRYPT
+    ld a,RECORD_TYPE.APP_DATA
+    pop hl
+    ;jr SEND_RECORD
 
 
-;--- Send a record that is not application data
-;    (encryption will happen in-place)
+;--- Send a record without any extra processing,
+;    encryption/splitting is assumed to have happened already if needed.
+;    Call this to send a record that is neither handshake nor application data.
+;
 ;    Input:  A  = Record type
-;            HL = Record data address
-;            BC = Record data length
+;            HL = Data address
+;            BC = Data length
 ;    Output: Cy = 1 if error
 
 SEND_RECORD:
-    ld d,a
-    ld a,(FLAGS)
-    push hl
-    and FLAGS.HAS_KEYS
-    ld a,d
-    jr z,.SEND
-
-    cp RECORD_TYPE.HANDSHAKE
-    jr z,.ENCRYPT
-    cp RECORD_TYPE.APP_DATA
-    jr nz,.SEND
-
-    ; We have encryption keys, so let's encrypt the message
-
-.ENCRYPT:
-    push hl
-    pop de  ;We overwrite the original data with the encrypted version
-.ENCRYPT_TO_DE:
-    call RECORD_ENCRYPTION.ENCRYPT
-    ld a,RECORD_TYPE.APP_DATA
-
-.SEND:
-
-    ; Here the record has been encrypted, or will be sent as plaintext
-    ; and the address of the record data is in the stack.
-
     ld (RECORD_HEADER.CONTENT_TYPE),a
     ld a,b
     ld (RECORD_HEADER.LENGTH),a
     ld a,c
     ld (RECORD_HEADER.LENGTH+1),a
 
+    push hl
     push bc
     ld hl,RECORD_HEADER.CONTENT_TYPE
     ld bc,5
