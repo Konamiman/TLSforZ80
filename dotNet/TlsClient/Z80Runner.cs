@@ -21,7 +21,9 @@ internal class Z80Runner
         Z80 = new Z80Processor();
 
         var z80Codedir = Path.GetFullPath(" ../../../../../../../z80", Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
-        var files = Directory.GetFiles(z80Codedir, "*.asm");
+        var msxCodedir = z80Codedir + "/msx";
+        string[] files = [.. Directory.GetFiles(z80Codedir, "*.asm"), .. Directory.GetFiles(msxCodedir, "*.asm")];
+        files = files.Where(f => !f.EndsWith("data_transport.asm")).ToArray();
         var linkingSequence = new List<ILinkingSequenceItem>() {
             new SetCodeBeforeDataMode(),
             new SetCodeSegmentAddress() { Address = 0x100 }

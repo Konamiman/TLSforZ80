@@ -1,6 +1,36 @@
+	title	TLS for Z80 by Konamiman
+	subttl	Record reception state machine
+
+.COMMENT \
+
+This module handles the reception of a record from the server,
+properly handling all the data transport/record/handshake message fragmentation
+and handling all the possible cases for handshake messages:
+
+* Record delivered in multiple fragments by the data transport layer
+* Multiple handshake messages in one single record
+* Handshake message split in multiple records
+* Multiple handshake messages, *and then* the first part of a split
+  handshake message, in one single record (unlikely but allowed by the protocol!)
+
+The only assumption made is that the first five bytes of a record (the record header)
+and the first four bytes of a handshake message (the handshake header)
+will be delivered in the same fragment by the data transport layer.
+
+Before TLS connections can be established RECORD_RECEIVER.INIT must be invoked once.
+The buffer size value supplied will determine the maximum received record size supported,
+ideally this should be 16K as that's the maximum record size as specified in RFC8446.
+
+Once there's a connection, UPDATE is called repeatedly, and whenever a full record
+is available then its address, length and type (and handshake type, when appropriate) 
+are returned and the record can be processed.
+
+\
+
+    include "tls_connection_constants.asm"
+    
     public RECORD_RECEIVER.INIT
     public RECORD_RECEIVER.UPDATE
-    public RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     public RECORD_RECEIVER.HANDSHAKE_HEADER
     public RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
     public RECORD_RECEIVER.HAS_PARTIAL_RECORD
@@ -10,53 +40,9 @@
     extrn RECORD_ENCRYPTION.DECRYPT
     extrn RECORD_ENCRYPTION.TAG_SIZE
 
-    public RECORD_RECEIVER.GOT_FULL_RECORD ;!!!
-    public RECORD_RECEIVER.UPDATE ;!!!
-    public RECORD_RECEIVER.RECEIVE_DATA ;!!!
-
-def_error: macro name,code
-name: equ code
-    public name
-    endm
-
     module RECORD_RECEIVER
 
-print: macro xxx
-    if 0
-    push af
-    push bc
-    push de
-    push hl
-    push ix
-    push iy
-    ld e,"&xxx"
-    ld c,2
-    call 5
-    pop iy
-    pop ix
-    pop hl
-    pop de
-    pop bc
-    pop af
-    endif
-    endm
-
-def_error ERROR_NO_CHANGE, 0
-def_error ERROR_CONNECTION_CLOSED, 1
-def_error ERROR_RECORD_TOO_LONG, 2
-def_error ERROR_BAD_AUTH_TAG, 3
-def_error ERROR_MSG_ALL_ZEROS, 4
-def_error ERROR_RECORD_OVER_16K, 5
-def_error ERROR_HANDSHAKE_MSG_TOO_LONG, 6
-def_error ERROR_NON_HANDSHAKE_RECEIVED, 7
-def_error ERROR_FULL_RECORD_AVAILABLE, 128
-def_error ERROR_FULL_HANDSHAKE_MESSAGE, 129
-def_error ERROR_SPLIT_HANDSHAKE_FIRST, 130
-def_error ERROR_SPLIT_HANDSHAKE_NEXT, 131
-def_error ERROR_SPLIT_HANDSHAKE_LAST, 132
-
 FLAG_SPLIT_HANDSHAKE_MSG: equ 1
-
 FLAG_MULTIPLE_HANDSHAKE_MSG: equ 2
 
     root DATA_TRANSPORT.RECEIVE
@@ -64,8 +50,6 @@ FLAG_MULTIPLE_HANDSHAKE_MSG: equ 2
     root DATA_TRANSPORT.IS_REMOTELY_CLOSED
     root RECORD_ENCRYPTION.DECRYPT
     root RECORD_ENCRYPTION.TAG_SIZE
-
-    include "tls_record_types.asm"
 
 
 ; Record format:
@@ -85,9 +69,10 @@ FLAG_MULTIPLE_HANDSHAKE_MSG: equ 2
 ; or a long handshake message could be split in multiple records
 ; of handshake type.
 
-;--- Initialize
-;    Input: HL = Address of buffer
-;           BC = Length of buffer
+
+;--- Initialize the engine.
+;    Input: HL = Address of the buffer the for received record
+;           BC = Length of buffer the for received record
 
 INIT:
     ld (BUFFER_ADDRESS),hl
@@ -105,33 +90,32 @@ INIT_FOR_NEXT_RECORD:
     pop af
     ret
 
-HAS_PARTIAL_RECORD: ;Cy=1 if yes
+
+;--- Has a record being partially received?
+;    Output: Cy=1 if yes, 0 if not
+
+HAS_PARTIAL_RECORD:
     ld a,(RECORD_TYPE)
     or a
     ret z
     scf
     ret
 
-;--- Update
+
+;--- Update the state machine, trying to receive more record data if appropriate.
 ;    Input:  -
-;    Output: A = 0: No full record available yet
-;                1: Error: underlying connection is closed
-;                2: Error: message is longer than buffer size
-;                3: Error decrypting record: bad auth tag
-;                4: Error decrypting record: message is all zeros
-;                5: Error: record is longer than 16K
-;                6: Error: handshake message is too long
-;                7: Error: non-handshake record received while split handshake is being received
-;                128: Full non-handshake record available
-;                129: Full handshake message available
-;                130: First part of a split handshake message available
-;                131: Next part of a split handshake message available
-;                132: Last part of a split handshake message available
-;            HL = Record address (if A>=128)
-;            BC = Record length (if A=128), full message length (if A=129), fragment length (if A>=130)
-;                 If A>=130, see RECORD_RECEIVER.HANDSHAKE_MSG_SIZE for the actual full message size
-;            D  = Record type (if A=128)
-;            E  = Handshake type (if A>=129)
+;    Output: A = Update result or error code. See RECORD_RECEIVER.UPDATE_RESULT in tls_connection_constants.asm
+;            HL = Record contents address (if A>=FULL_RECORD_AVAILABLE)
+;            BC = Record length (if A=FULL_RECORD_AVAILABLE), 
+;                 or full message length (if A=FULL_HANDSHAKE_MESSAGE), 
+;                 or fragment length (if A>=SPLIT_HANDSHAKE_FIRST).
+;                 If A>=SPLIT_HANDSHAKE_FIRST, see RECORD_RECEIVER.HANDSHAKE_MSG_SIZE for the actual full message size.
+;            D  = Record type (if A=FULL_RECORD_AVAILABLE)
+;            E  = Handshake type (if A>=FULL_HANDSHAKE_MESSAGE)
+;
+;   Note that the record contents will NOT include the record nor handshake headers,
+;   you can check HANDSHAKE_HEADER and HANDSHAKE_MSG_SIZE if needed.
+
 
 UPDATE:
     ld a,(FLAGS)
@@ -181,7 +165,7 @@ START_RECEIVING_RECORD:
     or a
     sbc hl,bc
     bit 7,h
-    ld a,ERROR_RECORD_OVER_16K
+    ld a,UPDATE_RESULT.RECORD_OVER_16K
     jp nz,INIT_FOR_NEXT_RECORD
 
     ld hl,(BUFFER_TOTAL_SIZE)
@@ -192,7 +176,7 @@ START_RECEIVING_RECORD:
     or a
     sbc hl,bc
     bit 7,h
-    ld a,ERROR_RECORD_TOO_LONG
+    ld a,UPDATE_RESULT.RECORD_TOO_LONG
     jp nz,INIT_FOR_NEXT_RECORD
 
     ;jr UPDATE
@@ -220,7 +204,7 @@ CONTINUE_RECEIVING_RECORD:
 
 GOT_FULL_RECORD:
     ld a,(RECORD_TYPE)
-    cp TLS_RECORD_TYPE.APP_DATA
+    cp :TLS_CONNECTION.RECORD_TYPE.APP_DATA
     jr nz,HANDLE_FULL_RECORD
 
     ld hl,(BUFFER_ADDRESS)
@@ -230,13 +214,10 @@ GOT_FULL_RECORD:
     push hl
     pop de
 
-    print 1
     call RECORD_ENCRYPTION.DECRYPT
-    print 2
-
     or a
     jr z,.DECRYPT_OK
-    add ERROR_BAD_AUTH_TAG-1    ;1 = lowest error code from RECORD_ENCRYPTION.DECRYPT
+    add UPDATE_RESULT.BAD_AUTH_TAG-1    ;1 = lowest error code from RECORD_ENCRYPTION.DECRYPT
     jp INIT_FOR_NEXT_RECORD
 
 .DECRYPT_OK:
@@ -250,7 +231,7 @@ HANDLE_FULL_RECORD:
     ; we can process it now
 
     ld a,(RECORD_TYPE)
-    cp TLS_RECORD_TYPE.HANDSHAKE
+    cp :TLS_CONNECTION.RECORD_TYPE.HANDSHAKE
     jr z,HANDLE_HANDSHAKE_RECORD
     ld d,a
 
@@ -260,8 +241,8 @@ HANDLE_FULL_RECORD:
     and FLAG_SPLIT_HANDSHAKE_MSG
     jr z,HANDLE_NON_HANDSHAKE_RECORD
     ld a,d
-    cp TLS_RECORD_TYPE.HANDSHAKE
-    ld a,ERROR_NON_HANDSHAKE_RECEIVED   ;Non-handshake record received while receiving a split handshake message
+    cp :TLS_CONNECTION.RECORD_TYPE.HANDSHAKE
+    ld a,UPDATE_RESULT.NON_HANDSHAKE_RECEIVED   ;Non-handshake record received while receiving a split handshake message
     jp nz,INIT_FOR_NEXT_RECORD
 
 HANDLE_NON_HANDSHAKE_RECORD:
@@ -270,7 +251,7 @@ HANDLE_NON_HANDSHAKE_RECORD:
     add hl,bc ;Skip record header
     ld bc,(RECORD_SIZE)
 
-    ld a,ERROR_FULL_RECORD_AVAILABLE
+    ld a,UPDATE_RESULT.FULL_RECORD_AVAILABLE
     push hl
     call INIT_FOR_NEXT_RECORD
     pop hl
@@ -311,7 +292,7 @@ EXTRACT_NEXT_HANDSHAKE_MESSAGE:
     
     ld a,(hl)
     or a
-    ld a,ERROR_HANDSHAKE_MSG_TOO_LONG   ;TODO: Support messages >64k
+    ld a,UPDATE_RESULT.HANDSHAKE_MSG_TOO_LONG   ;TODO: Support messages >64k
     jp nz,INIT_FOR_NEXT_RECORD
 
     inc hl
@@ -358,12 +339,12 @@ EXTRACT_FULL_HANDSHAKE_MESSAGE:
     ld a,h
     or l
     pop hl
-    ld a,ERROR_FULL_HANDSHAKE_MESSAGE
+    ld a,UPDATE_RESULT.FULL_HANDSHAKE_MESSAGE
     jp z,INIT_FOR_NEXT_RECORD
 
     ld a,FLAG_MULTIPLE_HANDSHAKE_MSG
     ld (FLAGS),a
-    ld a,ERROR_FULL_HANDSHAKE_MESSAGE
+    ld a,UPDATE_RESULT.FULL_HANDSHAKE_MESSAGE
     ret
 
     ; We have received the first part of a handshake message split in multiple records.
@@ -386,7 +367,7 @@ HANDLE_FIRST_PART_OF_SPLIT_HANDHSAKE_MESSAGE:
     call INIT_FOR_NEXT_RECORD
     ld a,FLAG_SPLIT_HANDSHAKE_MSG
     ld (FLAGS),a
-    ld a,ERROR_SPLIT_HANDSHAKE_FIRST
+    ld a,UPDATE_RESULT.SPLIT_HANDSHAKE_FIRST
     ret
 
     ; We have received the next (or last) part of a handshake message split in multiple records.
@@ -414,11 +395,11 @@ HANDLE_NEXT_HANDSHAKE_PART:
     call INIT_FOR_NEXT_RECORD
     ld a,FLAG_SPLIT_HANDSHAKE_MSG
     ld (FLAGS),a
-    ld a,ERROR_SPLIT_HANDSHAKE_NEXT
+    ld a,UPDATE_RESULT.SPLIT_HANDSHAKE_NEXT
     ret
 
 HANDLE_LAST_HANDSHAKE_PART:
-    ld a,ERROR_SPLIT_HANDSHAKE_LAST
+    ld a,UPDATE_RESULT.SPLIT_HANDSHAKE_LAST
     jp INIT_FOR_NEXT_RECORD
 
 HANDLE_LAST_HANDSHAKE_PART_AND_MORE_MSGS:
@@ -436,7 +417,7 @@ HANDLE_LAST_HANDSHAKE_PART_AND_MORE_MSGS:
     ld (FLAGS),a
     ld a,(HANDSHAKE_TYPE)
     ld e,a
-    ld a,ERROR_SPLIT_HANDSHAKE_LAST
+    ld a,UPDATE_RESULT.SPLIT_HANDSHAKE_LAST
     ret
 
 
@@ -444,7 +425,7 @@ HANDLE_LAST_HANDSHAKE_PART_AND_MORE_MSGS:
 ; Input:  BC = How much data to received (must be at most BUFFER_FREE_SIZE)
 ; Output: A  = Error:
 ;              0: Ok
-;              ERROR_CONNECTION_CLOSED: Error: underlying connection is closed
+;              UPDATE_RESULT.CONNECTION_CLOSED: Error: underlying connection is closed
 ;         If A=0:
 ;         BC = How much data was received
 ;         Z set it no data received
@@ -458,7 +439,7 @@ RECEIVE_DATA:
 
     call DATA_TRANSPORT.IS_REMOTELY_CLOSED
     pop bc
-    ld a,ERROR_CONNECTION_CLOSED
+    ld a,UPDATE_RESULT.CONNECTION_CLOSED
     ret c
 
     ld bc,0

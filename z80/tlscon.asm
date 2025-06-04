@@ -14,13 +14,6 @@
 	;are supported (received data is printed raw in the screen,
 	;and input data is sent raw to the TCP connection).
 
-	public UNAPI_CODE_BLOCK ;!!!
-	public WAIT_TLS_OPEN ;!!!
-	public BUFFER ;!!!
-	public MAIN_LOOP ;!!!
-	public HANDLE_CLOSE ;!!!
-	public MAIN_LOOP ;!!!
-
     extrn TLS_CONNECTION.INIT
     extrn TLS_CONNECTION.UPDATE
     extrn TLS_CONNECTION.SEND
@@ -478,7 +471,7 @@ WAIT_TLS_OPEN:
 
 	print TLS_OPENED_S
 
-	if 1
+	if 0
 	ld hl,HTTPDATA	;!!!
 	ld bc,HTTPDATA_END-HTTPDATA
 	call TLS_CONNECTION.SEND
@@ -774,8 +767,8 @@ GET_INPUT_L:	ld	a,255
 	ld	(hl),10
 	inc	bc
 
-	push bc
-	pop hl
+	;push bc
+	;pop hl
 	ld hl,BUFFER+2
 	call TLS_CONNECTION.SEND
 	;TODO: Failed?

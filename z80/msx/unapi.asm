@@ -1,11 +1,22 @@
+	title	TLS for Z80 by Konamiman
+	subttl	TCP/IP UNAPI data transport module
+
+.COMMENT \
+
+This is an implementation of the data transport module stub (see data_transport.asm)
+for TCP/IP stacks compliant with the UNAPI specification for MSX computers, see:
+https://github.com/Konamiman/MSX-UNAPI-specification/blob/master/docs/TCP-IP%20UNAPI%20specification.md
+
+Note that this module has a public INIT method that isn't present in the module stub.
+
+\
+
     public DATA_TRANSPORT.INIT
     public DATA_TRANSPORT.SEND
     public DATA_TRANSPORT.RECEIVE
     public DATA_TRANSPORT.HAS_IN_DATA
     public DATA_TRANSPORT.CLOSE
     public DATA_TRANSPORT.IS_REMOTELY_CLOSED
-
-    public DATA_TRANSPORT.HAS_IN_DATA ;!!!
 
     module DATA_TRANSPORT
 
@@ -22,8 +33,9 @@ ERR_BUFFER: equ 13
 
 
 ;--- Initialize
-;    Input: A  = Connection number
+;    Input: A  = Connection number of an already open TCP connection
 ;           HL = UNAPI code block
+;                (a block of code that calls the UNAPI entry point for the TCP/IP implementation)
 
 INIT:
     ld (CONNECTION_INDEX),a
@@ -35,7 +47,8 @@ INIT:
 
 ;--- Send data
 ;    Input:  HL = Data address
-;            BC = Data length (max 512 bytes)
+;            BC = Data length
+;                 (will never be over 512 bytes)
 ;    Output: Cy = 0: Ok, 1: Error
 
 SEND:
@@ -81,7 +94,7 @@ SEND:
 
 ;--- Receive data
 ;    Input:  HL = Destination address
-;            BC = Length
+;            BC = Requested length
 ;    Output: BC = Actual length received
 
 RECEIVE:
@@ -103,8 +116,9 @@ RECEIVE:
     ret
 
 
-;--- Is data available for reception?
+;--- Is there data available for reception?
 ;    Output: Cy = 1 if yes, 0 if not
+;    Note: if this returns 0, RECEIVE should return BC=0
 
 HAS_IN_DATA:
     call GET_CONNECTION_STATUS
@@ -147,6 +161,8 @@ IS_REMOTELY_CLOSED:
     ret
 
 
+;--- Return the connection status in A
+
 GET_CONNECTION_STATUS:
     ld a,(CONNECTION_INDEX)
     ld b,a
@@ -154,8 +170,10 @@ GET_CONNECTION_STATUS:
     ld a,TCPIP_TCP_STATE
     jp UNAPI_BLOCK
 
-CONNECTION_INDEX: db 0
 
+;--- Data area
+
+CONNECTION_INDEX: db 0
 UNAPI_BLOCK: ds 5
 
     endmod

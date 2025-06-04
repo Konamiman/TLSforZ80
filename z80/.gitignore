@@ -2,3 +2,7 @@
 *.lst
 *.LST
 *.REL
+*.COM
+*.bat
+
+

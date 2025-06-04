@@ -1,5 +1,5 @@
 	title	TLS for Z80 by Konamiman
-	subttl	Underlying data connection stub
+	subttl	Underlying data transport module stub
 
 .COMMENT \
 
@@ -10,7 +10,7 @@ This will typically be a TCP connection.
 
 THIS FILE IS A STUB! You need to implement it for the target system.
 To do that, go through the methods marked as public and implement them
-following the documented input and output requirements.
+following the documented input and output values for the Z80 registers.
 You may also want to add an "init" method to actually initiate the data connection
 but that's not included in this stub because the TLS code assumes that such connection
 is already stablished by the time TLS_CONNECTION.INIT is invoked.

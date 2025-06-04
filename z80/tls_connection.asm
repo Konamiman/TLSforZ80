@@ -22,7 +22,7 @@ Instructions for use in applications:
 
 Note that you need to implement the data transport layer for your system,
 see data_transport.asm which is a stub with the signature of the required methods
-(or you can use msx/unapi.asm if you are developong an application for MSX).
+(or you can use msx/unapi.asm if you are developing an application for MSX).
 You may also want to include tls_connection_constants.asm in your own code.
 
 You can have only one connection open at a given time. You can start over at any time
@@ -47,25 +47,7 @@ private and public key pair, if so go ahead and reimplement the public routines 
     public TLS_CONNECTION.SUB_ERROR_CODE
     public TLS_CONNECTION.ALERT_SENT
     public TLS_CONNECTION.ALERT_RECEIVED
-    public TLS_CONNECTION.ERROR_CODE.LOCAL_CLOSE
-    public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE
-    public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_RECORD_TYPE_IN_ESTABLISHED
-    public TLS_CONNECTION.ERROR_CODE.UNALLOWED_HANDSHAKE_TYPE_BEFORE_SERVER_HELLO
-    public TLS_CONNECTION.ERROR_CODE.ALERT_RECEIVED
-    public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_HANDSHAKE
-    public TLS_CONNECTION.ERROR_CODE.SECOND_SERVER_HELLO_RECEIVED
-    public TLS_CONNECTION.ERROR_CODE.RECEIVED_RECORD_DECODE_ERROR
-    public TLS_CONNECTION.ERROR_CODE.INVALID_SERVER_HELLO
-    public TLS_CONNECTION.ALERT_CODE.UNEXPECTED_MESSAGE
-    public TLS_CONNECTION.ALERT_CODE.INTERNAL_ERROR
-    public TLS_CONNECTION.ERROR_CODE.UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE
-    public TLS_CONNECTION.ERROR_CODE.CONNECTION_CLOSED_IN_ESTABLISHED
-    public TLS_CONNECTION.ERROR_CODE.UNEXPECTED_HANDSHAKE_TYPE_IN_ESTABLISHED    
     public TLS_CONNECTION.STATE
-
-    public TLS_CONNECTION.SEND_HANDSHAKE_RECORD ;!!!
-    public TLS_CONNECTION.INCOMING_DATA_LENGTH ;!!!
-    public TLS_CONNECTION.SEND_APP_DATA_RECORD ;!!!
 
     ifdef DEBUGGING
     public TLS_CONNECTION.SEND_DATA
@@ -103,13 +85,9 @@ private and public key pair, if so go ahead and reimplement the public routines 
     extrn RECORD_ENCRYPTION.INIT
     extrn RECORD_RECEIVER.UPDATE
     extrn RECORD_RECEIVER.HAS_PARTIAL_RECORD
-    extrn RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     extrn RECORD_RECEIVER.HANDSHAKE_HEADER
     extrn RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
     extrn SERVER_HELLO.PARSE
-    extrn RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
-    extrn RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
-    extrn RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
     extrn SERVER_HELLO.PARSE
     extrn SERVER_HELLO.PUBLIC_KEY
     extrn HKDF.DERIVE_HS_KEYS
@@ -147,13 +125,12 @@ OUTPUT_DATA_BUFFER_LENGTH: equ 128
     root RECORD_ENCRYPTION.INIT
     root RECORD_RECEIVER.UPDATE
     root RECORD_RECEIVER.HAS_PARTIAL_RECORD
-    root RECORD_RECEIVER.TLS_RECORD_TYPE.APP_DATA
     root RECORD_RECEIVER.HANDSHAKE_HEADER
     root RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
     root SERVER_HELLO.PARSE
-    root RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
-    root RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
-    root RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
+    root RECORD_RECEIVER.UPDATE_RESULT.FULL_RECORD_AVAILABLE
+    root RECORD_RECEIVER.UPDATE_RESULT.FULL_HANDSHAKE_MESSAGE
+    root RECORD_RECEIVER.UPDATE_RESULT.SPLIT_HANDSHAKE_FIRST
     root SERVER_HELLO.PARSE
     root SERVER_HELLO.PUBLIC_KEY
     root HKDF.DERIVE_HS_KEYS
@@ -168,28 +145,6 @@ OUTPUT_DATA_BUFFER_LENGTH: equ 128
 
     .relab
 
-    module MESSAGE_TYPE
-
-SERVER_HELLO: equ 2
-NEW_SESSION_TICKET: equ 4
-ENCRYPTED_EXTENSIONS: equ 8
-CERTIFICATE: equ 11
-CERTIFICATE_REQUEST: equ 13
-CERTIFICATE_VERIFY: equ 15
-FINISHED: equ 20
-KEY_UPDATE: equ 24
-
-    endmod
-
-    module RECORD_TYPE
-
-CHANGE_CIHPER_SPEC: equ 20
-ALERT: equ 21
-HANDSHAKE: equ 22
-APP_DATA: equ 23
-
-    endmod
-
     module FLAGS
 
 HAS_KEYS: equ 1
@@ -197,7 +152,6 @@ CERTIFICATE_RECEIVED: equ 2
 CERTIFICATE_REQUESTED: equ 4
 
     endmod
-
 
 
 ;--- Initialize the connection.
@@ -213,12 +167,14 @@ INIT:
     ld (STATE),a    ;STATE.INITIAL
     ld (ERROR_CODE),a
     ld (SUB_ERROR_CODE),a
-    ld (ALERT_SENT),a
-    ld (ALERT_RECEIVED),a
     ld (FLAGS),a
     ld (INCOMING_DATA_LENGTH),a
     ld (INCOMING_DATA_LENGTH+1),a
+    cpl
+    ld (ALERT_SENT),a
+    ld (ALERT_RECEIVED),a
 
+    cpl
     push hl
     push bc
     call SHA256.RUN ;With A=0, to initialize, for the hash of the transmitted handshake bytes
@@ -268,11 +224,11 @@ UPDATE_ON_ESTABLISHED_STATE:
     or a
     jr z,.NO_IN_DATA
 
-    cp RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
+    cp RECORD_RECEIVER.UPDATE_RESULT.FULL_RECORD_AVAILABLE
     jp c,HANDLE_RECORD_RECEIVER_ERROR
     jr z,.HANDLE_FULL_RECORD
 
-    cp RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
+    cp RECORD_RECEIVER.UPDATE_RESULT.FULL_HANDSHAKE_MESSAGE
     jr z,.HANDLE_HANDSHAKE_MESSAGE
 
     ; We have a split handshake message:
@@ -345,11 +301,10 @@ UPDATE_ON_ESTABLISHED_STATE:
 .NO_IN_DATA:
     call DATA_TRANSPORT.IS_REMOTELY_CLOSED
     ld a,(STATE)
-    ;ret ;!!! - it can be that it's remotely closed but we are in the middle of receiving a record!
     ret nc
 
     call RECORD_RECEIVER.HAS_PARTIAL_RECORD
-    jp c,RETURN_STATE
+    jp c,RETURN_STATE ;Server closed the connection, but we haven't yet received the last data it sent (the data transport layer has it waiting for us)
 
     ld a,(STATE)
     cp STATE.ESTABLISHED
@@ -391,16 +346,16 @@ UPDATE_ON_HANDSHAKE_STATE:
     ret c
 
     call RECORD_RECEIVER.UPDATE
-    or a    ;cp RECORD_RECEIVER.ERROR_NO_CHANGE
+    or a    ;cp RECORD_RECEIVER.UPDATE_RESULT.NO_CHANGE
     jp z,RETURN_STATE
 
-    cp RECORD_RECEIVER.ERROR_FULL_RECORD_AVAILABLE
+    cp RECORD_RECEIVER.UPDATE_RESULT.FULL_RECORD_AVAILABLE
     jp c,HANDLE_RECORD_RECEIVER_ERROR
 
-    cp RECORD_RECEIVER.ERROR_FULL_HANDSHAKE_MESSAGE
+    cp RECORD_RECEIVER.UPDATE_RESULT.FULL_HANDSHAKE_MESSAGE
     jr z,.HANDLE_FULL_HANDSHAKE_MESSAGE
 
-    cp RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
+    cp RECORD_RECEIVER.UPDATE_RESULT.SPLIT_HANDSHAKE_FIRST
     jp nc,.HANDLE_SPLIT_HANDSHAKE_MESSAGE
 
     ; We received a record that is not a handshake message:
@@ -539,20 +494,6 @@ UPDATE_ON_HANDSHAKE_STATE:
     jr .UPDATE_FLAGS
 
 .HANDLE_CERTIFICATE:
-    if 0
-    push af ;!!!
-    push bc
-    push de
-    push hl
-    ld e,"$"
-    ld c,2
-    call 5
-    pop hl
-    pop de
-    pop bc
-    pop af
-    endif
-
     ld d,FLAGS.CERTIFICATE_RECEIVED
 
 .UPDATE_FLAGS:
@@ -572,7 +513,7 @@ UPDATE_ON_HANDSHAKE_STATE:
 
     ld a,(FLAGS)
     and FLAGS.CERTIFICATE_RECEIVED
-    ld a,ERROR_CODE.FINISHED_BEFORE_CERTIFICATE
+    ld a,ERROR_CODE.FINISHED_RECEIVED_BEFORE_CERTIFICATE
     jp z,.SEND_UNEXPECTED_MESSAGE_ALERT
 
     push bc
@@ -604,7 +545,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     ld de,FINISHED_VALUE
     call HMAC.RUN
 
-    call SHA256.RESTORE_STATE   ;Restore here (not before) because HKDF and HMAC do their own SHA56 hashings
+    call SHA256.RESTORE_STATE   ;Restore now (not before) because HKDF and HMAC do their own SHA56 hashings
 
     pop hl  ;Received finished value
     pop bc
@@ -614,7 +555,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     call COMPARE_BLOCK
     jr z,.SERVER_FINISHED_OK
 
-    ld a,ERROR_CODE.BAD_FINISHED
+    ld a,ERROR_CODE.INVALID_FINISHED_RECEIVED
     ld b,0
     ld c,ALERT_CODE.DECRYPT_ERROR
     jp SEND_ALERT_AND_CLOSE
@@ -678,7 +619,7 @@ UPDATE_ON_HANDSHAKE_STATE:
     ;* Split handshake message received while in handshake stage
 
 .HANDLE_SPLIT_HANDSHAKE_MESSAGE:
-    cp RECORD_RECEIVER.ERROR_SPLIT_HANDSHAKE_FIRST
+    cp RECORD_RECEIVER.UPDATE_RESULT.SPLIT_HANDSHAKE_FIRST
     jr nz,.HANDLE_NON_FIRST_HANDSHAKE_FRAGMENT
 
     ; If the message is not of type "Certificate", close with an error:
@@ -1152,13 +1093,17 @@ COMPARE_BLOCK:
 
     ;--- Data area
 
-STATE: db 0
 FLAGS: db 0
-ALERT_SENT: db 0
-ALERT_RECEIVED: db 0
+
+; Current connection state, one of TLS_CONNECTION.STATE
+STATE: db 0
+
+; Error code indicating why the connection was closed,
+; 0 if not available (the connection is still open)
 ERROR_CODE: db 0
 
-; What gets stored here depends on ERROR_CODE:
+; Secondary error code, what gets stored here depends on ERROR_CODE:
+;
 ; RECEIVED_RECORD_DECODE_ERROR: Error returned by RECORD_RECEIVER.UPDATE
 ; UNEXPECTED_RECORD_TYPE_IN_HANDSHAKE: Record type
 ; UNEXPECTED_RECORD_TYPE_AFTER_ESTABLISHED: Record type
@@ -1166,11 +1111,15 @@ ERROR_CODE: db 0
 ; UNEXPECTED_HANDSHAKE_TYPE_BEFORE_SERVER_HELLO: Message type
 ; UNEXPECTED_HANDSHAKE_TYPE_IN_ESTABLISHED: Message type
 ; INVALID_SERVER_HELLO: Error returned by SERVER_HELLO.PARSE
-; BAD_MAX_FRAGMENT_LEGTH: Received value of max_fragment_length
-; INVALID_KEY_UPDATE: Received key update request type
 ; UNSUPPORTED_SPLIT_HANDSHAKE_MESSAGE: Message type
-
+;
+; All the error codes and message/record types are defined in tls_connection_constants.asm
 SUB_ERROR_CODE: db 0
+
+; Alert codes sent and received, FFh if no alert message was sent or received
+ALERT_SENT: db 0FFh
+ALERT_RECEIVED: db 0FFh
+
 
     module RECORD_HEADER
 

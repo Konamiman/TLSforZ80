@@ -36,7 +36,9 @@ public abstract class TestBase
         symbols.Clear();
 
         var z80Codedir = Path.GetFullPath(" ../../../../../../../z80", Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
-        var files = Directory.GetFiles(z80Codedir, "*.asm");
+        var msxCodedir = z80Codedir + "/msx";
+        string[] files = [.. Directory.GetFiles(z80Codedir, "*.asm"), .. Directory.GetFiles(msxCodedir, "*.asm")];
+        files = files.Where(f => !f.EndsWith("data_transport.asm")).ToArray();
         var linkingSequence = new List<ILinkingSequenceItem>() {
             new SetCodeBeforeDataMode(),
             new SetCodeSegmentAddress() { Address = 0x100 }
@@ -92,6 +94,10 @@ public abstract class TestBase
         var outputFile = Path.GetTempFileName();
         var outputStream = File.OpenWrite(outputFile);
         var linkingResult = RelocatableFilesProcessor.Link(config, outputStream);
+        if(linkingResult.Errors.Any()) {
+            var errorString = string.Join("\r\n", linkingResult.Errors);
+            throw new Exception($"Error linking files:\r\n\r\n" + errorString);
+        }
         outputStream.Close();
         z80ProgramBytes = File.ReadAllBytes(outputFile);
         var totalSize = linkingResult.ProgramsData.Sum(d => d.CodeSegmentSize);
@@ -100,6 +106,14 @@ public abstract class TestBase
             foreach(var symbol in programInfo.PublicSymbols) {
                 symbols.Add(symbol.Key, symbol.Value);
             }
+        }
+
+        var tlsConstantsFileContents = File.ReadAllText(Path.Combine(z80Codedir, "tls_connection_constants.asm"));
+        var assemblyResult2 = AssemblySourceProcessor.Assemble(tlsConstantsFileContents, new AssemblyConfiguration() {
+            BuildType = BuildType.Absolute
+        });
+        foreach(var symbol in assemblyResult2.Symbols) {
+            symbols.Add(symbol.EffectiveName, symbol.Value);
         }
 
         foreach(var file in tempFiles) {

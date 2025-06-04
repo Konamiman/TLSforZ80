@@ -65,8 +65,8 @@ public class TlsConnectionTests : TestBase
 
         AssertByteInMemory("TLS_CONNECTION.STATE", STATE_INITIAL);
         AssertByteInMemory("TLS_CONNECTION.ERROR_CODE", 0);
-        AssertByteInMemory("TLS_CONNECTION.ALERT_SENT", 0);
-        AssertByteInMemory("TLS_CONNECTION.ALERT_RECEIVED", 0);
+        AssertByteInMemory("TLS_CONNECTION.ALERT_SENT", 0xFF);
+        AssertByteInMemory("TLS_CONNECTION.ALERT_RECEIVED", 0xFF);
     }
 
     [Test]

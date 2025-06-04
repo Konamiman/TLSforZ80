@@ -8,7 +8,7 @@ This module will tke care of encrypting and decrypting records using the generat
 Whenever new keys are vailable (first handshake keys, then application keys, then key updates)
 INIT must be called twice, for the client keys and for the server keys.
 From that point use ENCRYPT (which will also generate the auth tag) and DECRYPT
-(which will return an error if the auth tag of the received data is invalid)
+(which will return an error if the auth tag of the received data is invalid).
 
 \
 

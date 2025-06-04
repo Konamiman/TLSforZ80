@@ -1,3 +1,15 @@
+	title	TLS for Z80 by Konamiman
+	subttl	ServerHello message parser
+
+.COMMENT \
+
+This module will parse a received ServerHello message and inform if there's something wrong with it.
+It will also store a copy of the received public key for later usage.
+
+\
+
+    include "tls_connection_constants.asm"
+
     public SERVER_HELLO.PARSE
     public SERVER_HELLO.PUBLIC_KEY
     extrn CLIENT_HELLO.SESSION_ID
@@ -8,32 +20,18 @@
 
     root CLIENT_HELLO.SESSION_ID
 
-ERR_INVALID_FORMAT: equ 1
-ERR_HELLO_RETRY: equ 2
-ERR_NO_TLS13: equ 3
-ERR_BAD_CIPHER_SUITE: equ 4
-ERR_NO_KEYSHARE: equ 5
-ERR_BAD_SESSIONID: equ 6
-ERR_BAD_COMPRESSION: equ 7
-
 EXT_KEY_SHARE: equ 51
 EXT_SUPPORTED_VERSIONS: equ 43
 
 GROUP_ID_P256: equ 23
 
 
-    ;--- Parse a received Server Hello message
+    ;--- Parse a received Server Hello message.
     ;    Input:  HL = Message address
     ;            BC = Message length
-    ;    Output: A = 0: Ok
-    ;                1: Invalid format
-    ;                2: HelloRetryRequest received
-    ;                3: Not TLS 1.3
-    ;                4: CipherSuite is not TLS_AES_128_GCM_SHA256
-    ;                5: No KeyShare extension for the cipher suite received
-    ;                6: Mismatching session id echo (not the same as CLIENT_HELLO.SESSION_ID)
-    ;                7: Bad legacy compression method
-    ;            HL = Address of public key (64 bytes)
+    ;    Output: A = Parse result or error code. See SERVER_HELLO.ERROR_CODE in tls_connection_constants.asm
+    ;            HL = Address of the received public key (64 bytes)
+
 PARSE:
     xor a
     ld (FLAGS),a
@@ -42,12 +40,12 @@ PARSE:
 
     ld a,(hl)   ;Legacy version field represents TLS 1.2?
     cp 3
-    ld a,ERR_NO_TLS13
+    ld a,ERROR_CODE.NO_TLS13
     ret nz
     inc hl
     ld a,(hl)
     cp 3
-    ld a,ERR_NO_TLS13
+    ld a,ERROR_CODE.NO_TLS13
     ret nz
     inc hl
 
@@ -60,7 +58,7 @@ PARSE:
     inc hl
     inc de
     djnz .RANDOM_CHECK_LOOP
-    ld a,ERR_HELLO_RETRY
+    ld a,ERROR_CODE.HELLO_RETRY
     ret
 .NO_HELLO_RETRY:
     ld c,b
@@ -69,13 +67,13 @@ PARSE:
 
     ld a,(hl)
     cp 32
-    ld a,ERR_BAD_SESSIONID
+    ld a,ERROR_CODE.BAD_SESSIONID
     ret nz
     inc hl
 
     ld b,32      ;Session ID is the same we sent?
     ld de,CLIENT_HELLO.SESSION_ID
-    ld c,ERR_BAD_SESSIONID
+    ld c,ERROR_CODE.BAD_SESSIONID
 .SESSION_ID_CHECK_LOOP:
     ld a,(de)
     cp (hl)
@@ -87,18 +85,18 @@ PARSE:
 
     ld a,(hl)   ;Cipher suite is TLS_AES_128_GCM_SHA256?
     cp 13h
-    ld a,ERR_BAD_CIPHER_SUITE
+    ld a,ERROR_CODE.BAD_CIPHER_SUITE
     ret nz
     inc hl
     ld a,(hl)
     dec a ;cp 1
-    ld a,ERR_BAD_CIPHER_SUITE
+    ld a,ERROR_CODE.BAD_CIPHER_SUITE
     ret nz
     inc hl
 
     ld a,(hl)   ;Legacy compression method is 0?
     or a
-    ld a,ERR_BAD_COMPRESSION
+    ld a,ERROR_CODE.BAD_COMPRESSION
     ret nz
     inc hl
 
@@ -111,7 +109,7 @@ PARSE:
 
 .EXTENSIONS_LOOP:
     bit 7,b
-    ld a,ERR_INVALID_FORMAT
+    ld a,ERROR_CODE.INVALID_FORMAT
     ret nz  ;Somehow remaining length went negative
 
     ld a,b
@@ -200,10 +198,10 @@ PARSE:
     ld a,(FLAGS)
     ld b,a
     bit 0,b
-    ld a,ERR_NO_TLS13
+    ld a,ERROR_CODE.NO_TLS13
     ret z
     bit 1,b
-    ld a,ERR_NO_KEYSHARE
+    ld a,ERROR_CODE.NO_KEYSHARE
     ret z
 
     xor a
@@ -213,10 +211,10 @@ PARSE:
 POP_NOTLS13:
     pop bc
 NO_TLS13:
-    ld a,ERR_NO_TLS13
+    ld a,ERROR_CODE.NO_TLS13
     ret
 NO_KEYSHARE:
-    ld a,ERR_NO_KEYSHARE
+    ld a,ERROR_CODE.NO_KEYSHARE
     ret
 
 HELLO_RETRY_RANDOM:
