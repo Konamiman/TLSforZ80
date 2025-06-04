@@ -163,6 +163,8 @@ CERTIFICATE_REQUESTED: equ 4
 ;    RECORD_RECEIVER.INIT
 
 INIT:
+    ld a,2
+    ld (ALERT_RECORD.LEVEL),a ;"Fatal" by default
     xor a
     ld (STATE),a    ;STATE.INITIAL
     ld (ERROR_CODE),a
@@ -814,6 +816,8 @@ CLOSE:
     ret
 
 .NO_INITIAL:
+    ld a,1
+    ld (ALERT_RECORD.LEVEL),a ;Change level to "warning"
     ld a,b
     cp STATE.ESTABLISHED
     ld a,ERROR_CODE.LOCAL_CLOSE
@@ -1131,7 +1135,7 @@ LENGTH: dw 0
 
     module ALERT_RECORD
 
-LEVEL: db 2    ;Always fatal error
+LEVEL: db 2
 DESCRIPTION: db 0
 
     endmod
