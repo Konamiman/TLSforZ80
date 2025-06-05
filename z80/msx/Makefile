@@ -1,3 +1,6 @@
+MAKEFLAGS += --no-builtin-rules
+.SUFFIXES:
+
 ifeq ($(strip $(N80)),)
 N80=N80
 endif
@@ -15,19 +18,22 @@ define assemble
 	@$(N80) $(1) $(2)
 endef
 
-RELFILES := ../aes.rel ../aes-gcm.rel ../client_hello.rel ../hkdf.rel ../hmac.rel ../p256.rel ../record_encryption.rel ../record_receiver.rel ../server_hello.rel ../sha256.rel ../tls_connection.rel unapi.rel
-TOOLS := tlscon.com
+COMMONRELFILES := aes.rel aes-gcm.rel client_hello.rel hkdf.rel hmac.rel p256.rel record_encryption.rel record_receiver.rel server_hello.rel sha256.rel tls_connection.rel
+TOOLS := tlscon
 
-all: $(TOOLS)
+all: tlscon
 
 tlscon: tlscon.com
 
-tlscon.com: $(RELFILES) tlscon.rel
+tlscon.com: $(COMMONRELFILES) unapi.rel tlscon.rel
 	@$(LK80) -vb 3 --output-file tlscon.com --code 0100h tlscon.rel --code 1d00h aes.rel aes-gcm.rel tls_connection.rel unapi.rel server_hello.rel client_hello.rel hkdf.rel hmac.rel record_encryption.rel record_receiver.rel sha256.rel p256.rel
 
 .SECONDEXPANSION:
-$(RELFILES): ../tls_connection_constants.asm $$(patsubst %.rel,%.asm,$$@)
-	$(call assemble,$(patsubst %.rel,%.asm,$@))
+$(COMMONRELFILES): ../tls_connection_constants.asm $$(patsubst %.rel,../%.asm,$$@)
+	$(call assemble,$(patsubst %.rel,../%.asm,$@))
+
+unapi.rel: unapi.asm
+	$(call assemble,unapi.asm)
 
 tlscon.rel: tlscon.asm
 	$(call assemble,tlscon.asm)

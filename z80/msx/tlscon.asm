@@ -1,9 +1,9 @@
 	;--- TLS console for the TCP/IP UNAPI 1.0
-	;    By Konamiman, 5/2025
-	;    Use: TCPCON <host name>|<IP address> <remote port> [<local port>]
+	;    By Konamiman, 6/2025
+	;    Use: TLSCON <host name>|<IP address> <remote port> [<local port>]
 
 	;This program opens a TCP connection to the specified host
-	;on the specified port (optionally a passive connection),
+	;on the specified port, establishes a TLS connection,
 	;and enters a loop in which all the received data is printed
 	;on the screen, and all the data typed on the keyboard
 	;is sent, until we (by pressing ESC) or the peer
@@ -488,17 +488,18 @@ HTTPDATA:
 	;db "Connection: close",13,10
 	;db "User-Agent: TLS console for the TCP/IP UNAPI 1.0 - by Konamiman",13,10
 	
-	if 1
+	if 0
 
 	db "GET / HTTP/1.1",13,10
 	db "Host: tls13.1d.pw",13,10
 
 	endif
 
-	if 0
+	if 1
 
 	db "GET / HTTP/1.1",13,10
 	db "Host: konamiman.com",13,10
+	db "User-Agent: TLS console for the TCP/IP UNAPI 1.0 - by Konamiman",13,10
 
 	endif
 
@@ -572,21 +573,33 @@ PRNTLOOP:
 	bit	2,a
 	jp	z,CLOSE_END
 
-	push	bc	;Print out data character by character.
-	ld	a,(hl)	;We can't use _STROUT function call,
-	cp 10
-	jr nz,NO10
+	;Print out data character by character.
+	;We can't use _STROUT function call,
+	;since we don't know if any "$" character
+	;is contained in the string.	
 
-	push hl
-	ld e,13
+	push	bc	
+	ld	a,(hl)
+	cp 10
+	jr nz,NO_EXTRA_CR
+
+	ld b,a
+	ld a,(LAST_CHAR_RECEIVED)
+	cp 13
+	ld a,b
+	jr z,NO_EXTRA_CR
+
+	push hl	    ;If current char is LF and previous char wasn't a CR,
+	ld e,13	    ;print an extra CR to display a proper line end.
 	ld c,_CONOUT
 	call DO_DOS
 	pop hl
 	ld a,10
 
-NO10:
-	inc	hl	;since we don't know if any "$" character
-	push	hl	;is contained in the string.
+NO_EXTRA_CR:
+	ld (LAST_CHAR_RECEIVED),a
+	inc	hl
+	push	hl
 	ld	e,a
 	ld	c,_CONOUT
 	call	DO_DOS
@@ -615,9 +628,11 @@ TLS_IS_CLOSED:
 	call	TLS_CONNECTION.RECEIVE
 	ld	a,b
 	or	c
-	jr nz,DOPRINT
+	jr nz,DOPRINT	;Even if the connection is closed, there's still data pending to be received
 
 HANDLE_CLOSE:
+	print CONN_CLOSED_REMOTELY
+
 	ld a,(TLS_CONNECTION.ERROR_CODE)
 	or a
 	jr z,.1
@@ -639,8 +654,9 @@ HANDLE_CLOSE:
 .2:
 
 	ld a,(TLS_CONNECTION.ALERT_RECEIVED)
-	or a
+	inc a
 	jr z,.3
+	dec a
 	ld ix,BUFFER
 	call BYTE2ASC
 	ld (ix),"$"
@@ -767,11 +783,8 @@ GET_INPUT_L:	ld	a,255
 	ld	(hl),10
 	inc	bc
 
-	;push bc
-	;pop hl
 	ld hl,BUFFER+2
-	call TLS_CONNECTION.SEND
-	;TODO: Failed?
+	call TLS_CONNECTION.SEND ;TODO: Handle failure
 
 	jr	END_KEY
 
@@ -1722,12 +1735,13 @@ CON_NUM:	db	#FF	;Connection handle
 INPUT_MODE:	db	0	;0 for line mode, #FF for character mode
 GETCHAR_FUN:	db	_CONIN	;_CONIN for echo ON, _INNOE for echo OFF
 DOS2:		db	0	;0 for DOS 1, #FF for DOS 2
+LAST_CHAR_RECEIVED: db 0
 
 ;--- Text strings
 
 PRESENT_S:
 	db	"TLS Console (simplified Telnet client over TLS) for the TCP/IP UNAPI 1.0",13,10
-	db	"By Konamiman, 5/2025",13,10,10,"$"
+	db	"By Konamiman, 6/2025",13,10,10,"$"
 
 INFO_S:	db	"Usage: TLSCON <host name>|<remote IP address> <remote port> [<local port>]",13,10,10
 	db	"       <local port>: if not specified, a random port will be selected",13,10,"$"
@@ -1739,7 +1753,6 @@ ERROR_S:	db	"*** ERROR: $"
 OPENING_S:	db	"Opening connection (press ESC to cancel)... $"
 RESOLVING_S:	db	"Resolving host name... $"
 OPENED_S:	db	"OK!",13,10,10,"$"
-	;db	"*** Press F1 for help",13,10,10,"$" ;!!!
 HELP_S:	db	13,10,"*** F1: Show this help",13,10
 	db	"*** F2: Toggle line/character mode",13,10
 	db	"        Current mode is: "
@@ -1768,9 +1781,10 @@ ASTERISK_S:	db	"*** $"
 TLS_OPENING_S: db "Establishing TLS connection... $"
 TLS_OPENED_S:  db	"OK!",13,10,10
 	db	"*** Press F1 for help",13,10,10,"$"
-TLS_ERROR_S: db 13,10,"--- TLS error code: $"
-TLS_SUB_ERROR_S: db 13,10,"--- TLS sub error code: $"
-TLS_ALERT_RECEIVED_S: db 13,10,"--- TLS alert received: $"
+CONN_CLOSED_REMOTELY: db 13,10,"--- Connection closed remotely$"
+TLS_ERROR_S: db 13,10,"    TLS error code: $"
+TLS_SUB_ERROR_S: db 13,10,"    TLS sub error code: $"
+TLS_ALERT_RECEIVED_S: db 13,10,"    TLS alert received: $"
 
 	;* Host name resolution
 

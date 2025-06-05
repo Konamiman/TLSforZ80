@@ -1,5 +1,5 @@
 	title	TLS for Z80 by Konamiman
-	subttl	Key and shared secret generation using the P256 curve
+	subttl	Key and shared secret generation using the P256 (secp256r1) curve
 
 .COMMENT \
 

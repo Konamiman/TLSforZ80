@@ -176,3 +176,4 @@ BAD_SESSIONID: equ 6
 BAD_COMPRESSION: equ 7
 
     endmod
+
