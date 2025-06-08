@@ -155,8 +155,9 @@ CERTIFICATE_REQUESTED: equ 4
 
 
 ;--- Initialize the connection.
-;    Input:  HL = Address of "server name"
-;            B  = Length of "server name" (max 128 bytes!)
+;    Input:  HL = Address of server name string
+;            B  = Length of server name string
+;                 (max length is given by CLIENT_HELLO.SERVER_NAME_MAX_LENGTH)
 ;
 ;    Assumes the following has been called already:
 ;    DATA_TRANSPORT.INIT
@@ -1072,7 +1073,6 @@ SEND_RECORD:
 ;    Input:  A = Message code
 
 SEND_ALERT_RECORD:
-    ;TODO: Warning level if userCancelled or closeNotify
     ld (ALERT_RECORD.DESCRIPTION),a
     ld (ALERT_SENT),a
     ld a,RECORD_TYPE.ALERT

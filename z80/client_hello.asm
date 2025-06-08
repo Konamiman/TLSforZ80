@@ -14,6 +14,7 @@ from a server name (for the corresponding extension) and a P256 public key.
     public CLIENT_HELLO.SIZE
     public CLIENT_HELLO.SESSION_ID
     public CLIENT_HELLO.PUBLIC_KEY
+    public CLIENT_HELLO.SERVER_NAME_MAX_LENGTH
 
     ifdef DEBUGGING
 
@@ -26,13 +27,14 @@ from a server name (for the corresponding extension) and a P256 public key.
 
 RANDOM_SIZE: equ 32
 PUBLIC_KEY_SIZE: equ 64
+SERVER_NAME_MAX_LENGTH: equ 128
 
 
 ;--- Initialize the message and the associated variables (e.g. SIZE)
 ;    Assumes that public key has been copied to PUBLIC_KEY
 ;
 ;    Input:  HL = Address of "server name"
-;            B  = Length of "server name" (max 128 bytes!)
+;            B  = Length of "server name" (max SERVER_NAME_MAX_LENGTH bytes)
 ;    Output: HL = Address of CLIENT_HELLO.MESSAGE
 ;            BC = Value of CLIENT_HELLO.SIZE
 ;            The message will be preceded by a proper 4 byte handshake message header.
@@ -185,7 +187,7 @@ SERVER_NAME_DATA_SIZE: dw 0
     db 0       ; Name type: "DNS hostname"
 SERVER_NAME_NAME_SIZE: dw 0    
 EXTENSIONS_END:
-SERVER_NAME: ds 128
+SERVER_NAME: ds SERVER_NAME_MAX_LENGTH
 
     endmod
 

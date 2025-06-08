@@ -7,7 +7,13 @@ This is an implementation of the data transport module stub (see data_transport.
 for TCP/IP stacks compliant with the UNAPI specification for MSX computers, see:
 https://github.com/Konamiman/MSX-UNAPI-specification/blob/master/docs/TCP-IP%20UNAPI%20specification.md
 
+The application code is responsible for performing the UNAPI discovery procedure,
+selecting the TCP/IP stack to use (if there's more than one), doing any DNS name resolution
+if needed, and opening the TCP connection.
+
 Note that this module has a public INIT method that isn't present in the module stub.
+All the initialization steps mentioned, up to opening the TCP connection, are assumed
+to have been already performed by the time INIT is called.
 
 \
 
