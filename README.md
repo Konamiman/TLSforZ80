@@ -49,3 +49,13 @@ Once you have implemented a data transport layer suitable for the target system 
 For the assembly and linking process you need [Nestor80](https://github.com/Konamiman/Nestor80), more precisely the assembler (`N80`) and the linker (`LK80`). See [the makefile in the `msx` folder](z80/msx/Makefile) for a working example.
 
 Note that [the `aes.asm` module](z80/aes.asm) needs to be linked at a 256 byte boundary in memory. Otherwise there are no restrictions on where the code is located or in which order it's linked.
+
+
+## The dotNet folder
+
+[The dotNet folder](dotNet/) contains a Visual Studio solution with a few C# projects that have been used as helper tools for the development of this project:
+
+* `Tests` contains unit tests for the Z80 code. It uses [the Z80.NET](https://github.com/Konamiman/Z80dotNet/) and [the ZWatcher](https://github.com/Konamiman/ZWatcher/) projects.
+* `TlsClient` is a reimplementation of [the TlsClient project](https://github.com/Konamiman/TlsClient/) where all the original C# code has been replaced with the equivalent Z80 code. This replacement was done gradually, as the Z80 code was being developed.
+* `TlsConsole` also comes from the TlsClient project and is a simple Telnet-like command line application: it connects to the specified server using a TLS connection and then echoes any received data and sends any data coming from the keyboard.
+* `PocketZ80` is a simplified and more performant version of Z80.NET used by TlsClient to run the Z80 code.
