@@ -1,6 +1,6 @@
 # TLS for Z80
 
-This is an incomplet but functional implementation of a [TLS 1.3](https://en.wikipedia.org/wiki/Transport_Layer_Security) client for Z80 processors. It's a 100% software implementation, not making use of any external cryptographic hardware.
+This is an incomplete but functional implementation of a [TLS 1.3](https://en.wikipedia.org/wiki/Transport_Layer_Security) client for Z80 processors. It's a 100% software implementation, not making use of any external cryptographic hardware.
 
 
 ## What's implemented
