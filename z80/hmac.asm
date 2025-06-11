@@ -1,6 +1,8 @@
     title	TLS for Z80 by Konamiman
 	subttl	HMAC algorithm
 
+	name('HMAC')
+
 .COMMENT \
 
 This module implements the HMAC-SHA256 hashing.
@@ -13,9 +15,10 @@ See the comment for the RUN routine.
 	public HMAC.RUN
 	extrn SHA256.RUN
 
+	.extroot
+
     module HMAC
 
-	root SHA256.RUN
 
 ;--- HMAC-SHA256 hashing routine
 ;    

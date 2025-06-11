@@ -1,6 +1,8 @@
 	title	TLS for Z80 by Konamiman
 	subttl	Key and shared secret generation using the P256 (secp256r1) curve
 
+    name('P256')
+
 .COMMENT \
 
 This file is actually a "working stub". It always uses the number 1 as the private key,

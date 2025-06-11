@@ -1,6 +1,8 @@
     title	TLS for Z80 by Konamiman
 	subttl	Record encryption
 
+    name('RECORD_ENCRYPTION')
+
 .COMMENT \
 
 This module will tke care of encrypting and decrypting records using the generated keys.
@@ -23,13 +25,9 @@ From that point use ENCRYPT (which will also generate the auth tag) and DECRYPT
     extrn AES_GCM.DECRYPT
     extrn AES_GCM.AUTHTAG
 
-    module RECORD_ENCRYPTION
+    .extroot
 
-    root AES_GCM.INIT
-    root AES_GCM.ENCRYPT
-    root AES_GCM.FINISH
-    root AES_GCM.DECRYPT
-    root AES_GCM.AUTHTAG
+    module RECORD_ENCRYPTION
 
 KEY_SIZE: equ 16
 IV_SIZE: equ 12

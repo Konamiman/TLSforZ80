@@ -1,6 +1,8 @@
 	title	TLS for Z80 by Konamiman
 	subttl	Record reception state machine
 
+    name('RECORD_RECEIVER')
+
 .COMMENT \
 
 This module handles the reception of a record from the server,
@@ -40,16 +42,12 @@ are returned and the record can be processed.
     extrn RECORD_ENCRYPTION.DECRYPT
     extrn RECORD_ENCRYPTION.TAG_SIZE
 
+    .extroot
+
     module RECORD_RECEIVER
 
 FLAG_SPLIT_HANDSHAKE_MSG: equ 1
 FLAG_MULTIPLE_HANDSHAKE_MSG: equ 2
-
-    root DATA_TRANSPORT.RECEIVE
-    root DATA_TRANSPORT.HAS_IN_DATA
-    root DATA_TRANSPORT.IS_REMOTELY_CLOSED
-    root RECORD_ENCRYPTION.DECRYPT
-    root RECORD_ENCRYPTION.TAG_SIZE
 
 
 ; Record format:

@@ -1,6 +1,8 @@
     title	TLS for Z80 by Konamiman
 	subttl	HKDF algorithm
 
+    name('HKDF')
+
 .COMMENT \
 
 This module has code to derive the handshake and application keys for the TLS connection.
@@ -36,11 +38,9 @@ and to update the traffic keys at the request of the peer.
     extrn SHA256.RUN
     extrn SHA256.HASH_OF_EMPTY
 
-    module HKDF
+    .extroot
 
-    root HMAC.RUN
-    root SHA256.RUN
-    root SHA256.HASH_OF_EMPTY
+    module HKDF
 
 
     ;--- Derive handshake keys

@@ -1,6 +1,8 @@
 	title	TLS for Z80 by Konamiman
 	subttl	AES algorithm implementation
 
+    name('AES')
+
 .COMMENT \
 
 Implementation of the AES algorithm as specified in https://doi.org/10.6028/NIST.FIPS.197-upd1

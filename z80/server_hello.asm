@@ -1,6 +1,8 @@
 	title	TLS for Z80 by Konamiman
 	subttl	ServerHello message parser
 
+    name('SERVER_HELLO')
+
 .COMMENT \
 
 This module will parse a received ServerHello message and inform if there's something wrong with it.
@@ -14,11 +16,10 @@ It will also store a copy of the received public key for later usage.
     public SERVER_HELLO.PUBLIC_KEY
     extrn CLIENT_HELLO.SESSION_ID
 
+    .extroot
     .relab
 
     module SERVER_HELLO
-
-    root CLIENT_HELLO.SESSION_ID
 
 EXT_KEY_SHARE: equ 51
 EXT_SUPPORTED_VERSIONS: equ 43

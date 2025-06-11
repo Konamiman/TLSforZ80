@@ -1,5 +1,7 @@
     title	TLS for Z80 by Konamiman
 	subttl	ClientHello message
+
+    name('CLIENT_HELLO')
     
 .COMMENT \
 

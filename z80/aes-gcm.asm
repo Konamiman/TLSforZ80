@@ -1,6 +1,8 @@
         title	TLS for Z80 by Konamiman
 	    subttl	AES-128-GCM algorithm implementation
 
+        name('AES_GCM')
+
 .COMMENT \
 
 Implementation of the AES-128-GCM encryption algorithm as specified in
@@ -37,11 +39,9 @@ To get the auth tag of received encrypted data:
     extrn AES.ENCRYPT
     extrn AES.DECRYPT
 
-    module AES_GCM
+    .extroot
 
-    root AES.INIT
-    root AES.ENCRYPT
-    root AES.DECRIPT 
+    module AES_GCM
 
 
 ;--------------------------------------------------------------------

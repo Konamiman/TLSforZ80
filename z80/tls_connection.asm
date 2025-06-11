@@ -1,6 +1,8 @@
 	title	TLS for Z80 by Konamiman
 	subttl	TLS connection handler
 
+    name('TLS_CONNECTION')
+
 .COMMENT \
 
 This is the "main" file that handles a TLS connection.
@@ -33,8 +35,6 @@ is implemented, see p256.asm. You may want to use external hardware for generati
 private and public key pair, if so go ahead and reimplement the public routines in p256.asm as appropriate.
 
 \
-
-    include "tls_connection_constants.asm"
 
     public TLS_CONNECTION.INIT
     public TLS_CONNECTION.UPDATE
@@ -101,49 +101,20 @@ private and public key pair, if so go ahead and reimplement the public routines 
     extrn HKDF.UPDATE_TRAFFIC_KEY
     extrn HMAC.RUN
 
+    .relab
+    .extroot
+
+    include "tls_connection_constants.asm"
+
     module TLS_CONNECTION
+
+    root RECORD_RECEIVER.UPDATE_RESULT.FULL_RECORD_AVAILABLE
+    root RECORD_RECEIVER.UPDATE_RESULT.FULL_HANDSHAKE_MESSAGE
+    root RECORD_RECEIVER.UPDATE_RESULT.SPLIT_HANDSHAKE_FIRST
 
     ifndef TLS_CONNECTION.OUTPUT_DATA_BUFFER_LENGTH
 OUTPUT_DATA_BUFFER_LENGTH: equ 128
     endif
-
-    root CLIENT_HELLO.INIT
-    root CLIENT_HELLO.MESSAGE_HEADER
-    root CLIENT_HELLO.SIZE
-    root CLIENT_HELLO.PUBLIC_KEY
-    root P256.GENERATE_KEY_PAIR
-    root P256.GENERATE_SHARED_KEY
-    root DATA_TRANSPORT.SEND
-    root DATA_TRANSPORT.IS_REMOTELY_CLOSED
-    root DATA_TRANSPORT.HAS_IN_DATA
-    root DATA_TRANSPORT.CLOSE
-    root SHA256.RUN
-    root SHA256.SAVE_STATE
-    root SHA256.RESTORE_STATE
-    root RECORD_ENCRYPTION.ENCRYPT
-    root RECORD_ENCRYPTION.TAG_SIZE
-    root RECORD_ENCRYPTION.INIT
-    root RECORD_RECEIVER.UPDATE
-    root RECORD_RECEIVER.HAS_PARTIAL_RECORD
-    root RECORD_RECEIVER.HANDSHAKE_HEADER
-    root RECORD_RECEIVER.HANDSHAKE_MSG_SIZE
-    root SERVER_HELLO.PARSE
-    root RECORD_RECEIVER.UPDATE_RESULT.FULL_RECORD_AVAILABLE
-    root RECORD_RECEIVER.UPDATE_RESULT.FULL_HANDSHAKE_MESSAGE
-    root RECORD_RECEIVER.UPDATE_RESULT.SPLIT_HANDSHAKE_FIRST
-    root SERVER_HELLO.PARSE
-    root SERVER_HELLO.PUBLIC_KEY
-    root HKDF.DERIVE_HS_KEYS
-    root HKDF.DERIVE_AP_KEYS
-    root HKDF.COMPUTE_FINISHED_KEY
-    root HKDF.UPDATE_TRAFFIC_KEY
-    root HKDF.CLIENT_KEY
-    root HKDF.SERVER_KEY
-    root HKDF.CLIENT_IV
-    root HKDF.SERVER_IV
-    root HMAC.RUN
-
-    .relab
 
     module FLAGS
 

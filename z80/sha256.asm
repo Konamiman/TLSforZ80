@@ -1,6 +1,8 @@
     title	TLS for Z80 by Konamiman
 	subttl	SHA256 hashing
 
+    name('SHA256')
+
 .COMMENT \
 
 This module implements the SHA256 hash.

@@ -1,5 +1,7 @@
 	title	TLS for Z80 by Konamiman
 	subttl	Underlying data transport module stub
+    
+    name('DATA_TRANSPORT')
 
 .COMMENT \
 

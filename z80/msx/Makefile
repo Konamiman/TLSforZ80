@@ -26,7 +26,7 @@ all: tlscon
 tlscon: tlscon.com
 
 tlscon.com: $(COMMONRELFILES) unapi.rel tlscon.rel
-	@$(LK80) -vb 3 --output-file tlscon.com --code 0100h tlscon.rel --code 1d00h aes.rel aes-gcm.rel tls_connection.rel unapi.rel server_hello.rel client_hello.rel hkdf.rel hmac.rel record_encryption.rel record_receiver.rel sha256.rel p256.rel
+	@$(LK80) -vb 3 --output-file tlscon.com --code 0100h tlscon.rel --align-code 256 aes.rel aes-gcm.rel tls_connection.rel unapi.rel server_hello.rel client_hello.rel hkdf.rel hmac.rel record_encryption.rel record_receiver.rel sha256.rel p256.rel
 
 .SECONDEXPANSION:
 $(COMMONRELFILES): ../tls_connection_constants.asm $$(patsubst %.rel,../%.asm,$$@)
